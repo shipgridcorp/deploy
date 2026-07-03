@@ -1,0 +1,51 @@
+{{- if .Values.frontends.enabled }}
+{{- /* SPA frontends. Image = explicit $fe.image, else {global.registry}/{repo}:{tag}.
+       Service names are bare so the gateway nginx finds them. */ -}}
+{{- range $name, $fe := .Values.frontends.items }}
+{{- $img := $fe.image | default (printf "%s/%s:%s" $.Values.global.registry $fe.repo (toString $fe.tag)) }}
+{{- if or $fe.image (and $fe.repo $fe.tag) }}
+{{- $port := $fe.port | default 80 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipgrid.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" $name "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" $name "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ $img }}
+          ports:
+            - { name: http, containerPort: {{ $port }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipgrid.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" $name "root" $) | nindent 4 }}
+  ports:
+    - { name: http, port: 80, targetPort: http }
+{{- end }}
+{{- end }}
+{{- end }}

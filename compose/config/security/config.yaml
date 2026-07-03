@@ -1,0 +1,17 @@
+# security config, mounted from the security-config config file at CONFIG_PATH.
+# Only the six extracted security-platform microservice URLs live here — every
+# other field (server.http_port, postgres.dsn, redis/qdrant/neo4j, secrets,
+# site URLs, the auth/billing/task-tracker/indexing/platform/review-processor
+# peer URLs) is resolved by the flexible loader from code defaults + the
+# shared envFrom. Setting these six makes the bundled split-worker services
+# (policy-engine, proof-engine, cloud-scanner, k8s-scanner, runtime-collector,
+# findings-correlator — see services.<name> in values.yaml) authoritative for
+# their domain instead of security's embedded implementation. Unset any of
+# them (delete the line) to fall back to embedded for just that domain.
+services:
+  policy_engine_url: http://policy-engine:8000
+  proof_engine_url: http://proof-engine:8000
+  cloud_scanner_url: http://cloud-scanner:8000
+  k8s_scanner_url: http://k8s-scanner:8000
+  runtime_collector_url: http://runtime-collector:8000
+  findings_correlator_url: http://findings-correlator:8000

@@ -1,0 +1,20 @@
+# Install-specific — never commit
+.env
+*.env
+!*.env.example
+!.env.example
+license.json
+license*.json
+*.pem
+*.key
+secrets-summary.txt
+values-secrets*.yaml
+secrets/
+
+# Air-gap bundles
+*.tar
+*.tar.gz
+*.sha256
+
+# OS / editor noise
+.DS_Store

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: shipgrid
+description: ShipGrid on-prem umbrella chart — all backend services + edge gateway, with RU/self-hosted LLM policy and Ed25519 licensing. For customer-operated (incl. air-gapped) Kubernetes.
+type: application
+version: 0.4.0
+appVersion: "1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://shipgrid.app
+sources:
+  - https://docs.shipgrid.app
+keywords: [sdlc, devsecops, on-prem, ru, self-hosted, security, ai]
+maintainers:
+  - name: ShipGrid
+    url: https://shipgrid.app
+annotations:
+  category: DeveloperTools

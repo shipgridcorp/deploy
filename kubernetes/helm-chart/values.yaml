@@ -1,0 +1,312 @@
+# ShipGrid on-prem umbrella chart — default values.
+# Override with values-onprem.yaml (see that file) and --set-file for secrets.
+
+global:
+  # Image registry that ships the ShipGrid service images.
+  #  • Default = the vendor release registry (Harbor). Pull requires a per-client,
+  #    pull-only robot credential — create it as an imagePullSecret (see README).
+  #  • Air-gap / policy: mirror the images into your own registry and point this
+  #    at it, e.g. registry: harbor.internal.example.ru/shipgrid
+  registry: registry.shipgrid.app/shipgrid
+  # Pull secret(s) for the registry above. Create one with the credentials you
+  # were issued:  kubectl -n <ns> create secret docker-registry regcred \
+  #   --docker-server=registry.shipgrid.app --docker-username='robot$<client>' \
+  #   --docker-password=<token>
+  # then list it here:  imagePullSecrets: [ { name: regcred } ]
+  imagePullSecrets: []
+  # Shared HMAC secret for internal service-to-service auth. CHANGE for production.
+  internalAuthSecret: "4b520439d21044cdf016af60c042ee34924630e58ec0ee831d1b15879c852396"
+
+# ── Shared secrets ────────────────────────────────────────────────────────────
+# Injected into EVERY backend pod via `envFrom` (Secret shipgrid-secrets). Each
+# service's config resolves these env vars when the matching field is absent
+# from its (minimal/empty) ConfigMap — so secrets live here, not in ConfigMaps.
+# Defaults are shared dev values — OVERRIDE for production (own values file /
+# --set / SealedSecrets / External Secrets). See "Production hardening" in README.
+secrets:
+  jwtSecret: "local-dev-jwt-secret-please-change-0123456789"
+  encryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  redisPassword: "devflowredis"
+  neo4jPassword: "devflowneo4j"
+  qdrantApiKey: ""
+  # gate is the one service that consumes a full Redis URL (others compose
+  # REDIS_ADDR + REDIS_PASSWORD themselves). Left empty, the chart derives it
+  # from redisPassword above (redis://:<redisPassword>@redis:6379/0) — so
+  # rotating redisPassword alone keeps gate in sync automatically. Only set
+  # this if gate's Redis is NOT the bare in-namespace `redis` (e.g. an
+  # external managed Redis at a different host/port).
+  redisURL: ""
+  # Per-service DATABASE_URL is taken from each service's default (bundled
+  # postgres). For managed/external DBs, override per service via
+  # services.<name>.env.DATABASE_URL (different DB name per service).
+
+# ── Site URLs ─────────────────────────────────────────────────────────────────
+# Non-secret, install-specific. Injected into every pod via ConfigMap
+# shipgrid-config (envFrom). Empty → services fall back to localhost defaults
+# (deep links / SSO ACS only; the API still works). Set to your public origins.
+site:
+  publicAppURL: ""   # PUBLIC_APP_URL  — client dashboard origin (e.g. https://shipgrid.example.ru)
+  adminAppURL: ""    # ADMIN_APP_URL   — admin console origin
+  spBaseURL: ""      # SP_BASE_URL     — SAML SP base (usually = publicAppURL)
+
+# ── First admin bootstrap ───────────────────────────────────────────────────────
+# Set adminBootstrap.email to the client's first admin-console email. On startup
+# admin-auth creates that admin with a generated temporary password (printed once
+# in the admin-auth pod log) and forces a password change on first login.
+# Idempotent: leaving an existing admin untouched. Empty → no bootstrap.
+adminBootstrap:
+  email: ""   # BOOTSTRAP_ADMIN_EMAIL
+
+# Defaults applied to every service (per-service blocks override via
+# services.<name>.{resources,probes,nodeSelector,tolerations,affinity}).
+defaults:
+  port: 8000
+  replicas: 1
+  configMountPath: /app/config
+  imagePullPolicy: IfNotPresent
+  # DB migrations run on startup (each service self-migrates).
+  env:
+    DEVFLOW_DB_MIGRATIONS_MODE: "startup"
+  # Baseline sized off the vendor sizing guide (26 Go services: 5.5GB RAM min /
+  # 11GB rec, 8–12 vCPU peak — see docs.shipgrid.app). requests * 26 ≈ the min
+  # bucket, limits * 26 ≈ the rec bucket, leaving headroom for infra deps on a
+  # 16 vCPU / 32 GB PoC node and 16–24 vCPU / 64 GB production profile.
+  # Heavier services (indexing, ai-analysis, security) override per-service.
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  # Every service ships /healthz (liveness) + /readyz (dependency-aware
+  # readiness) except gate (llm-gateway uses /health + /readiness — overridden
+  # on its service block below). Generous thresholds tolerate slow starts
+  # (self-migration on boot) without false-restarting a healthy pod.
+  probes:
+    liveness:  { path: /healthz, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 }
+    readiness: { path: /readyz,  initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+  # maxUnavailable:1 is a no-op at replicas:1 (voluntary disruption always
+  # allowed to drain the single pod) and protects real availability once a
+  # service is scaled past 1 (e.g. indexing's replicas:2).
+  pdb:
+    enabled: true
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ── RU LLM policy ─────────────────────────────────────────────────────────────
+# Block foreign LLM providers stack-wide (152-ФЗ). The gate config also enforces
+# this; a gate image built with `-tags ru` is the binary-level guarantee.
+llm:
+  blockForeignProviders: true
+  yandex:
+    apiKey: ""
+    folderId: ""
+    baseURL: ""
+  gigachat:
+    authKey: ""
+    scope: "GIGACHAT_API_PERS"
+    caFile: ""   # path to mounted Russian Trusted Root CA
+  # Foreign providers — used only when blockForeignProviders=false (non-RU
+  # deployments). The gate is a standard (non `-tags ru`) build for these.
+  openai:
+    apiKey: ""
+    baseURL: ""   # blank → api.openai.com; set for Azure/OpenAI-compatible
+  anthropic:
+    apiKey: ""
+    baseURL: ""
+  mockEnabled: true   # set false once a real LLM is configured
+
+# ── On-prem license (Ed25519) ─────────────────────────────────────────────────
+license:
+  enabled: true
+  publicKeyHex: ""
+  # Provide the signed license at install:  --set-file license.file=license.signed.json
+  file: ""
+  mountPath: /etc/shipgrid/license.json
+
+# ── Egress lockdown ───────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
+  # When enabled, default-deny egress except DNS + the CIDRs below (RF LLM, etc.).
+  allowedEgressCIDRs: []
+
+# ── Edge gateway (nginx) — one origin for SPA + API ───────────────────────────
+gateway:
+  enabled: true
+  image: nginx:1.25-alpine
+  replicas: 1
+  serviceType: ClusterIP
+  # CoreDNS ClusterIP — REQUIRED for the variable proxy_pass to resolve backends.
+  # Find it: kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+  resolver: "10.96.0.10"
+
+# ── External access ───────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  # e.g. cert-manager: { cert-manager.io/cluster-issuer: letsencrypt }
+  annotations: {}
+  app:     { host: "shipgrid.example.ru" }
+  admin:   { host: "admin.shipgrid.example.ru" }
+  landing: { host: "" }   # empty → no landing rule
+  tls:
+    enabled: false
+    secretName: shipgrid-tls
+
+# ── SPA frontends ─────────────────────────────────────────────────────────────
+# CI publishes :onprem-<tag> images (same-origin API base) — host-agnostic behind
+# the gateway. Enable with --set frontends.enabled=true. image = {global.registry}
+# /{repo}:{tag} unless `image` is set explicitly.
+frontends:
+  enabled: false
+  items:
+    frontend:         { repo: frontend,         tag: "onprem-v1.500.0", port: 80 }  # client dashboard
+    admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.54.0",  port: 80 }
+    frontend-landing: { repo: frontend-landing, tag: "onprem-v1.50.0",  port: 80 }
+
+# ── Backend services ──────────────────────────────────────────────────────────
+# image defaults to {global.registry}/{image}:{tag}. gate uses the llm-gateway image.
+#
+# `config: true` mounts a ConfigMap from configs/<name>/config.yaml. With the
+# flexible loader (shared/config: file → env → default), services boot purely
+# from in-cluster defaults + the shared secrets/site env, so only `gate` still
+# needs a ConfigMap (its `providers:` block declares which LLM providers exist).
+# To override an in-cluster default for a service, add a configs/<name>/config.yaml
+# with ONLY the changed keys and flip its `config: true`.
+services:
+  # Release tags WITH the shared/license.Gate (cut 2026-06-23, one patch above
+  # the then-current prod). CI builds these gated images; on-prem enforces the
+  # license (prod runs them too but the gate is inert there — no LICENSE_ENABLED).
+  auth:              { image: auth,              tag: v1.39.0,   config: false }
+  admin-auth:        { image: admin-auth,        tag: v1.20.0,   config: false }
+  # platform reaches the connector over gRPC (repo listing / integration checks).
+  # The connector serves gRPC on :9090 (HTTP health on :8000) — exposed via
+  # connector.extraPorts below. No env override needed: connector:9090 is
+  # already platform's code default.
+  platform:          { image: platform,          tag: v1.56.0,   config: false }
+  billing:           { image: billing,           tag: v1.41.0,   config: false, license: true }
+  # gate is the one service off the /healthz+/readyz convention (/health +
+  # /readiness instead).
+  gate:
+    image: llm-gateway
+    tag: v1.23.0
+    config: true
+    probes:
+      liveness:  { path: /health }
+      readiness: { path: /readiness }
+  connector:         { image: connector,         tag: v1.23.0,   config: false, extraPorts: [ { name: grpc, port: 9090 } ] }
+  # replicas: 2 — each pod runs one repo pipeline worker (claims per-repo jobs via
+  # FOR UPDATE SKIP LOCKED), so >1 replica indexes repositories in parallel.
+  # v1.64.0+ defaults services.platform_url to http://platform:8000 (matches
+  # every other service) — no env override needed.
+  indexing:          { image: indexing,          tag: v1.64.0,   config: false, replicas: 2 }
+  # The six extracted security-platform microservice URLs (policy-engine
+  # FR-024, proof-engine FR-034/035, cloud-scanner FR-009, k8s-scanner FR-011,
+  # runtime-collector FR-013, findings-correlator FR-038) are set via
+  # configs/security/config.yaml, not env — see that file. Unset (delete a
+  # line there) = embedded path for that domain.
+  security:          { image: security,          tag: v1.119.0,  config: true }
+  ai-analysis:       { image: ai-analysis,       tag: v1.240.0,  config: false }
+  ai-settings:       { image: ai-settings,       tag: v0.6.0,    config: false }
+  review-processor:  { image: review-processor,  tag: v1.54.0,   config: false }
+  webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false }
+  notification:      { image: notification,      tag: v1.9.0,    config: false }
+  task-tracker:      { image: task-tracker,      tag: v1.48.0,   config: false }
+  qa-hub:            { image: qa-hub,             tag: v2.42.0,   config: false }
+  dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false }
+  delivery-ops:      { image: delivery-ops,      tag: v1.42.0,   config: false }
+  realtime-gateway:  { image: realtime-gateway,  tag: v1.1.4,    config: false }
+  automation-runner: { image: automation-runner, tag: v1.3.3,    config: false }
+  # Security split-workers (env-driven, no config.yaml). Each needs an explicit
+  # DATABASE_URL (no in-binary default) and owns its own database. The bundled
+  # These extracted security-platform services now use the flexible config
+  # loader like every other service: `config: true` mounts configs/<name>/
+  # config.yaml at CONFIG_PATH, which carries the DB DSN (postgres.dsn) and
+  # server.http_port=8000. So the DB credentials come from the ConfigMap, not a
+  # pod env var, and the port matches the Service (was :8080 by default).
+  # INTERNAL_AUTH_SECRET is still injected as a secret-env by the chart.
+  # Image tags v0.5.0/v0.6.0 also self-migrate their schema at startup.
+  policy-engine:       { image: policy-engine,       tag: v0.6.0, config: true }
+  runtime-collector:   { image: runtime-collector,   tag: v0.5.0, config: true }
+  k8s-scanner:         { image: k8s-scanner,         tag: v0.5.0, config: true }
+  cloud-scanner:       { image: cloud-scanner,       tag: v0.5.0, config: true }
+  proof-engine:        { image: proof-engine,        tag: v0.5.0, config: true }
+  findings-correlator: { image: findings-correlator, tag: v0.5.0, config: true }
+
+# ── Bundled infra (PoC only). For production use managed services / operators
+# and point service configs at their URLs. Heavy stateful deps (kafka, clickhouse,
+# neo4j, qdrant) are intentionally NOT bundled — bring your own. ────────────────
+infra:
+  postgres:
+    enabled: false
+    image: pgvector/pgvector:pg16
+    storage: 20Gi
+    storageClassName: ""   # "" → cluster default StorageClass
+    # The user/password and the database names below MUST match the service
+    # images' built-in connection defaults (postgres://devflow:devflow@postgres:
+    # 5432/devflow_<service>) — that is why they carry the `devflow` prefix.
+    # Change them only by overriding each service's DATABASE_URL to match. For a
+    # production install, point services at your managed DB instead of bundling.
+    auth: { user: devflow, password: devflow }
+    # Per-service databases created on first init (each service self-migrates its
+    # schema). The service user (auth.user) owns them.
+    databases:
+      - devflow_admin_auth
+      - devflow_ai_analysis
+      - devflow_ai_settings
+      - devflow_auth
+      - devflow_billing
+      - devflow_delivery_ops
+      - devflow_dev_jobs
+      - devflow_gate
+      - devflow_indexing
+      - devflow_platform
+      - devflow_qa_hub
+      - devflow_review_processor
+      - devflow_security
+      - devflow_task_tracker
+      - devflow_webhook_ingestor
+      # security split-workers (each owns its own DB)
+      - devflow_cloud_scanner
+      - devflow_policy_engine
+      - devflow_proof_engine
+      - devflow_runtime_collector
+      - devflow_k8s_scanner
+      - devflow_findings_correlator
+  redis:
+    enabled: false
+    image: redis:7-alpine
+  kafka:
+    enabled: false
+    # Bitnami moved free images to bitnamilegacy/* in 2025; bitnami/kafka:3.7 is gone.
+    image: bitnamilegacy/kafka:3.7
+    storage: 10Gi
+    storageClassName: ""
+  neo4j:
+    enabled: false
+    image: neo4j:5-community
+    storage: 10Gi
+    storageClassName: ""
+  qdrant:
+    enabled: false
+    # Must match the go-client (shared/qdrant uses qdrant/go-client v1.17.x).
+    # On v1.12.x the newer client's dense-vector wire format is read as empty
+    # ("expected dim: N, got 0" on upsert), so indexing can't store embeddings.
+    image: qdrant/qdrant:v1.17.1
+    storage: 10Gi
+    storageClassName: ""
+  clickhouse:
+    # LLM gateway usage analytics (admin LLM-usage tab). When enabled, the chart
+    # sets gate's CLICKHOUSE_URL and gate auto-migrates the schema.
+    enabled: false
+    image: clickhouse/clickhouse-server:24.8
+    # The 24.x image rejects the default user with an empty password over TCP, so
+    # the `default` user gets this password (dev default — rotate for prod).
+    password: "devflowclickhouse"
+    storage: 10Gi
+    storageClassName: ""
+  kroki:
+    # Server-side C4/PlantUML diagram rendering. When enabled, ai-analysis's
+    # default KROKI_URL=http://kroki:8000 resolves and architecture diagrams
+    # render via Kroki instead of the weaker in-app fallback. Single all-in-one
+    # container; no persistence needed.
+    enabled: false
+    image: yuzutech/kroki:0.26.0

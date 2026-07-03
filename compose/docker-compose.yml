@@ -1,0 +1,391 @@
+# ShipGrid — single-VM on-prem stack (Scenario A of the installation guide).
+#
+# Self-contained: 25 backend services + SPA frontends + edge gateway + bundled
+# single-node infrastructure (PostgreSQL/pgvector, Redis, Kafka, ClickHouse,
+# Neo4j, Qdrant, Kroki). Images are pulled from the ShipGrid release registry
+# (or loaded from an air-gap bundle — see ../airgap/).
+#
+#   cp .env.example .env      # edit: license, LLM credentials, public URLs
+#   ./install.sh              # preflight → up → smoke
+#
+# Everything install-specific comes from .env; the defaults below boot a PoC
+# out of the box. Rotate the shared dev secrets before production
+# (../scripts/rotate-secrets.sh — see the Hardening section of the README).
+
+name: shipgrid
+
+# ── Shared environment for every backend service ──────────────────────────────
+# Mirrors the Helm chart's shipgrid-secrets Secret + shipgrid-config ConfigMap:
+# each service's flexible config loader (file → env → default) reads these when
+# the matching field isn't set in a config file.
+x-backend-env: &backend-env
+  # Shared platform secrets — identical across ALL services (inter-service auth
+  # breaks if they diverge). Dev defaults; rotate for production via .env.
+  INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-4b520439d21044cdf016af60c042ee34924630e58ec0ee831d1b15879c852396}
+  JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-please-change-0123456789}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-devflowredis}
+  # Derived from REDIS_PASSWORD so rotating the password keeps every consumer
+  # in sync automatically.
+  REDIS_URL: redis://:${REDIS_PASSWORD:-devflowredis}@redis:6379/0
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:-devflowneo4j}
+  QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+  # Site URLs (deep links / SAML ACS). Empty values are ignored by the config
+  # loader, which then falls back to localhost defaults — fine for a PoC.
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+  ADMIN_APP_URL: ${ADMIN_APP_URL:-http://localhost:8081}
+  SP_BASE_URL: ${SP_BASE_URL:-}
+  # On-prem license gate — runs in EVERY backend service at startup. When
+  # LICENSE_ENABLED=true a service refuses to boot unless the mounted
+  # license.json verifies against LICENSE_PUBLIC_KEY (fail-closed).
+  LICENSE_ENABLED: ${LICENSE_ENABLED:-true}
+  LICENSE_FILE: /etc/shipgrid/license.json
+  LICENSE_PUBLIC_KEY: ${LICENSE_PUBLIC_KEY:-}
+  # Each service self-migrates its database schema on startup.
+  DEVFLOW_DB_MIGRATIONS_MODE: startup
+
+# Common shape of every backend service. Services that mount a config file
+# override `volumes` (and add CONFIG_PATH) explicitly.
+x-backend: &backend
+  restart: unless-stopped
+  environment: *backend-env
+  volumes:
+    - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    kafka: { condition: service_healthy }
+
+services:
+  # ═══════════════════════════ Backend services ═══════════════════════════════
+  auth:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/auth:${AUTH_TAG:-v1.39.0}
+
+  admin-auth:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/admin-auth:${ADMIN_AUTH_TAG:-v1.20.0}
+    environment:
+      <<: *backend-env
+      # First admin-console user: created on startup with a generated temporary
+      # password (printed ONCE in this container's log), forced password change
+      # on first login. Empty → no bootstrap.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+
+  platform:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/platform:${PLATFORM_TAG:-v1.56.0}
+
+  billing:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/billing:${BILLING_TAG:-v1.41.0}
+
+  # gate (llm-gateway) — the only service with a mandatory config file: its
+  # providers/llm_policy block declares which LLM providers exist. Provider
+  # credentials come from .env (expanded inside config/gate/config.yaml).
+  gate:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/llm-gateway:${GATE_TAG:-v1.23.0}
+    volumes:
+      - ./config/gate:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+      # RU LLM policy: block foreign providers (152-ФЗ). Keep true for any RF
+      # deployment; a gate image built with `-tags ru` enforces it in-binary.
+      BLOCK_FOREIGN_LLM: ${BLOCK_FOREIGN_LLM:-true}
+      # Built-in mock provider — the stack runs with NO real LLM (stub answers).
+      # Set false once a real provider is configured.
+      MOCK_PROVIDER_ENABLED: ${MOCK_PROVIDER_ENABLED:-true}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      YANDEX_LLM_BASE_URL: ${YANDEX_LLM_BASE_URL:-}
+      GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      GIGACHAT_CA_FILE: ${GIGACHAT_CA_FILE:-}
+      # Foreign providers — honoured only when BLOCK_FOREIGN_LLM=false (non-RU).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      # LLM usage analytics (admin console tab) live in ClickHouse; gate
+      # auto-migrates the schema on startup.
+      CLICKHOUSE_URL: clickhouse://default:${CLICKHOUSE_PASSWORD:-devflowclickhouse}@clickhouse:9000/default
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+
+  # Serves gRPC on :9090 (platform's default connector:9090 resolves in the
+  # compose network) and HTTP health on :8000.
+  connector:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/connector:${CONNECTOR_TAG:-v1.23.0}
+
+  # Two replicas: each container runs one repo pipeline worker (per-repo jobs
+  # claimed via FOR UPDATE SKIP LOCKED), so two repositories index in parallel.
+  indexing:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/indexing:${INDEXING_TAG:-v1.64.0}
+    deploy:
+      replicas: 2
+
+  # security mounts a config that points the six extracted security-platform
+  # domains at their split-worker services (see config/security/config.yaml).
+  security:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/security:${SECURITY_TAG:-v1.119.0}
+    volumes:
+      - ./config/security:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  ai-analysis:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-analysis:${AI_ANALYSIS_TAG:-v1.240.0}
+
+  ai-settings:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-settings:${AI_SETTINGS_TAG:-v0.6.0}
+
+  review-processor:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/review-processor:${REVIEW_PROCESSOR_TAG:-v1.54.0}
+
+  webhook-ingestor:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/webhook-ingestor:${WEBHOOK_INGESTOR_TAG:-v1.13.0}
+
+  notification:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/notification:${NOTIFICATION_TAG:-v1.9.0}
+
+  task-tracker:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/task-tracker:${TASK_TRACKER_TAG:-v1.48.0}
+
+  qa-hub:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/qa-hub:${QA_HUB_TAG:-v2.42.0}
+
+  dev-jobs:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/dev-jobs:${DEV_JOBS_TAG:-v0.34.0}
+
+  delivery-ops:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/delivery-ops:${DELIVERY_OPS_TAG:-v1.42.0}
+
+  realtime-gateway:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/realtime-gateway:${REALTIME_GATEWAY_TAG:-v1.1.4}
+
+  automation-runner:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/automation-runner:${AUTOMATION_RUNNER_TAG:-v1.3.3}
+
+  # ── Security split-workers ───────────────────────────────────────────────────
+  # Each owns its own database and self-migrates; the config file carries the
+  # DSN + http_port (see config/<name>/config.yaml).
+  policy-engine:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/policy-engine:${POLICY_ENGINE_TAG:-v0.6.0}
+    volumes:
+      - ./config/policy-engine:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  runtime-collector:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/runtime-collector:${RUNTIME_COLLECTOR_TAG:-v0.5.0}
+    volumes:
+      - ./config/runtime-collector:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  k8s-scanner:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/k8s-scanner:${K8S_SCANNER_TAG:-v0.5.0}
+    volumes:
+      - ./config/k8s-scanner:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  cloud-scanner:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/cloud-scanner:${CLOUD_SCANNER_TAG:-v0.5.0}
+    volumes:
+      - ./config/cloud-scanner:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  proof-engine:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/proof-engine:${PROOF_ENGINE_TAG:-v0.5.0}
+    volumes:
+      - ./config/proof-engine:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  findings-correlator:
+    <<: *backend
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/findings-correlator:${FINDINGS_CORRELATOR_TAG:-v0.5.0}
+    volumes:
+      - ./config/findings-correlator:/app/config:ro
+      - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
+    environment:
+      <<: *backend-env
+      CONFIG_PATH: /app/config/config.yaml
+
+  # ═══════════════════════════ Frontends + edge ═══════════════════════════════
+  # SPA frontends: on-prem builds (same-origin API base) — host-agnostic behind
+  # the gateway; no configuration needed.
+  frontend:
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend:${FRONTEND_TAG:-onprem-v1.500.0}
+    restart: unless-stopped
+
+  admin-frontend:
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/admin-frontend:${ADMIN_FRONTEND_TAG:-onprem-v1.54.0}
+    restart: unless-stopped
+
+  frontend-landing:
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend-landing:${FRONTEND_LANDING_TAG:-onprem-v1.50.0}
+    restart: unless-stopped
+
+  # Edge gateway: one origin for each SPA + the REST/SSE API (no CORS).
+  # Put your TLS reverse-proxy in front of these ports for production.
+  gateway:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    volumes:
+      - ./config/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${APP_PORT:-8080}:80"     # client dashboard
+      - "${ADMIN_PORT:-8081}:81"   # admin console
+      - "${LANDING_PORT:-8082}:82" # landing / sign-in
+    depends_on:
+      - frontend
+      - admin-frontend
+      - frontend-landing
+
+  # ═══════════════════════════ Infrastructure ═════════════════════════════════
+  # Single-node stateful dependencies. Data lives in named docker volumes —
+  # `docker compose down` keeps them, `down -v` DELETES them.
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    # The user/password and per-service database names MUST match the service
+    # images' built-in DSN defaults (postgres://devflow:devflow@postgres:5432/
+    # devflow_<svc>). Postgres is not exposed outside the compose network.
+    environment:
+      POSTGRES_USER: devflow
+      POSTGRES_PASSWORD: devflow
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./config/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-devflowredis}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Single-node Kafka in KRaft mode (no ZooKeeper). kafka:9092 matches the
+  # services' KAFKA_BROKERS default.
+  kafka:
+    image: bitnamilegacy/kafka:3.7
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@localhost:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-devflowneo4j}
+    volumes:
+      - neo4j_data:/data
+
+  # Vector store. The image version must stay in step with the services' qdrant
+  # client (v1.17.x) — older servers read the dense-vector wire format as empty.
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # LLM usage analytics (gate → admin console). The 24.x image rejects the
+  # default user with an empty password over TCP, so one is always set.
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-devflowclickhouse}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --password \"$${CLICKHOUSE_PASSWORD}\" -q 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Server-side C4/PlantUML diagram rendering (ai-analysis → http://kroki:8000).
+  kroki:
+    image: yuzutech/kroki:0.26.0
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  kafka_data:
+  neo4j_data:
+  qdrant_data:
+  clickhouse_data:

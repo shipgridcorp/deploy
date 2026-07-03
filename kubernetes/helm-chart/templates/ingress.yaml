@@ -1,0 +1,67 @@
+{{- if .Values.ingress.enabled }}
+{{- $tls := .Values.ingress.tls }}
+# External access via Ingress + TLS. Routes each host to the gateway Service
+# port (app:80 / admin:81 / landing:82). Requires gateway.enabled.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shipgrid
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts:
+        {{- with .Values.ingress.app.host }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- with .Values.ingress.admin.host }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- with .Values.ingress.landing.host }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ $tls.secretName | default "shipgrid-tls" }}
+  {{- end }}
+  rules:
+    {{- with .Values.ingress.app.host }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port: { name: app }
+    {{- end }}
+    {{- with .Values.ingress.admin.host }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port: { name: admin }
+    {{- end }}
+    {{- with .Values.ingress.landing.host }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port: { name: landing }
+    {{- end }}
+{{- end }}

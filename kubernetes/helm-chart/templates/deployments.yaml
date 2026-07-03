@@ -1,0 +1,186 @@
+{{- range $name, $svc := .Values.services }}
+{{- $port := $svc.port | default $.Values.defaults.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipgrid.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas | default $.Values.defaults.replicas }}
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" $name "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" $name "root" $) | nindent 8 }}
+      annotations:
+        # Secret/ConfigMap changes don't roll pods on their own (envFrom is a
+        # reference, not a value) — hash the content so `helm upgrade` after
+        # rotating a secret or editing a config.yaml actually restarts them.
+        checksum/secrets: {{ include "shipgrid.secretsChecksum" $ }}
+        checksum/site-config: {{ include "shipgrid.siteConfigChecksum" $ }}
+        {{- if $svc.config }}
+        checksum/config: {{ include "shipgrid.svcConfigChecksum" (dict "name" $name "root" $) }}
+        {{- end }}
+    spec:
+      # Don't inject legacy <SVC>_PORT_* env vars for every Service in the
+      # namespace — in a shared namespace that's hundreds of vars and breaks
+      # apps that treat env as config (e.g. neo4j strict validation).
+      enableServiceLinks: false
+      # No service talks to the K8s API directly (cloud/k8s scanning goes
+      # through the connector's own credentials) — don't hand pods a token.
+      automountServiceAccountToken: false
+      {{- with ($svc.nodeSelector | default $.Values.defaults.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($svc.tolerations | default $.Values.defaults.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($svc.affinity | default $.Values.defaults.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "shipgrid.image" (dict "svc" $svc "root" $) }}
+          imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
+          # Safe regardless of the image's USER (root or not): these services
+          # are plain HTTP servers/DB clients that need no Linux capabilities
+          # and never escalate privileges.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+            {{- range $p := $svc.extraPorts }}
+            - name: {{ $p.name }}
+              containerPort: {{ $p.targetPort | default $p.port }}
+            {{- end }}
+          # Shared secrets + site URLs for every service. The flexible config
+          # loader reads these when a field is absent from the (minimal) config.
+          # envFrom is lower-precedence than the explicit env: below.
+          envFrom:
+            - secretRef:
+                name: shipgrid-secrets
+            - configMapRef:
+                name: shipgrid-config
+          env:
+            - name: INTERNAL_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: internal-auth
+                  key: secret
+            {{- range $k, $v := $.Values.defaults.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- if $svc.config }}
+            - name: CONFIG_PATH
+              value: {{ printf "%s/config.yaml" $.Values.defaults.configMountPath | quote }}
+            {{- end }}
+            {{- if and (eq $name "admin-auth") $.Values.adminBootstrap.email }}
+            - name: BOOTSTRAP_ADMIN_EMAIL
+              value: {{ $.Values.adminBootstrap.email | quote }}
+            {{- end }}
+            {{- if and (eq $name "gate") $.Values.infra.clickhouse.enabled }}
+            # Usage analytics (admin LLM-usage tab) live in ClickHouse; without
+            # this the gate's /internal/analytics/* return 404 → admin shows
+            # "workspace not provisioned". gate auto-migrates the CH schema.
+            - name: CLICKHOUSE_URL
+              value: {{ printf "clickhouse://default:%s@clickhouse:9000/default" $.Values.infra.clickhouse.password | quote }}
+            {{- end }}
+            {{- if eq $name "gate" }}
+            - name: BLOCK_FOREIGN_LLM
+              value: {{ $.Values.llm.blockForeignProviders | quote }}
+            - name: MOCK_PROVIDER_ENABLED
+              value: {{ $.Values.llm.mockEnabled | quote }}
+            - name: YANDEX_API_KEY
+              value: {{ $.Values.llm.yandex.apiKey | quote }}
+            - name: YANDEX_FOLDER_ID
+              value: {{ $.Values.llm.yandex.folderId | quote }}
+            - name: YANDEX_LLM_BASE_URL
+              value: {{ $.Values.llm.yandex.baseURL | quote }}
+            - name: GIGACHAT_AUTH_KEY
+              value: {{ $.Values.llm.gigachat.authKey | quote }}
+            - name: GIGACHAT_SCOPE
+              value: {{ $.Values.llm.gigachat.scope | quote }}
+            - name: GIGACHAT_CA_FILE
+              value: {{ $.Values.llm.gigachat.caFile | quote }}
+            - name: OPENAI_API_KEY
+              value: {{ $.Values.llm.openai.apiKey | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ $.Values.llm.openai.baseURL | quote }}
+            - name: ANTHROPIC_API_KEY
+              value: {{ $.Values.llm.anthropic.apiKey | quote }}
+            - name: ANTHROPIC_BASE_URL
+              value: {{ $.Values.llm.anthropic.baseURL | quote }}
+            {{- end }}
+            {{- /* LICENSE_ENABLED / LICENSE_FILE / LICENSE_PUBLIC_KEY come from
+                   the shared shipgrid-config ConfigMap (envFrom above) so the
+                   startup license gate runs in every backend service, not just
+                   billing. */}}
+          {{- with ($svc.resources | default $.Values.defaults.resources) }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- include "shipgrid.probe" (dict "svc" $svc "root" $ "kind" "liveness" "port" "http") | nindent 12 }}
+          readinessProbe:
+            {{- include "shipgrid.probe" (dict "svc" $svc "root" $ "kind" "readiness" "port" "http") | nindent 12 }}
+          volumeMounts:
+            {{- if $svc.config }}
+            - name: config
+              mountPath: {{ $.Values.defaults.configMountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if and $.Values.license.enabled $.Values.license.file }}
+            - name: license
+              mountPath: {{ $.Values.license.mountPath }}
+              subPath: license.json
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if $svc.config }}
+        - name: config
+          configMap:
+            name: {{ printf "%s-config" $name }}
+        {{- end }}
+        {{- if and $.Values.license.enabled $.Values.license.file }}
+        - name: license
+          secret:
+            secretName: license
+        {{- end }}
+{{- if $.Values.defaults.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipgrid.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  # A no-op at replicas:1 (voluntary disruption of the only pod is still
+  # allowed); protects real availability once scaled past 1.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" $name "root" $) | nindent 6 }}
+{{- end }}
+{{- end }}

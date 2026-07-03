@@ -1,0 +1,12 @@
+# k8s-scanner config, mounted from the k8s-scanner-config ConfigMap at CONFIG_PATH.
+# Only non-secret, install-specific settings live here; INTERNAL_AUTH_SECRET is
+# injected as a secret-env by the chart and the LLM/site vars come from the
+# shared shipgrid-config ConfigMap. The flexible loader fills any omitted key
+# from its code default.
+server:
+  http_port: 8000
+# Database credentials for this service's own logical DB on the bundled
+# postgres. Override the DSN here (not via a pod env var) to point at an
+# external/managed postgres.
+postgres:
+  dsn: postgres://devflow:devflow@postgres:5432/devflow_k8s_scanner?sslmode=disable

@@ -1,0 +1,38 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default-deny egress for all ShipGrid pods, allowing only in-namespace traffic,
+# DNS, and the explicitly allow-listed CIDRs (e.g. the RF LLM endpoint). This is
+# the egress-lockdown that backs the "no data leaves the perimeter" guarantee.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipgrid-egress-lockdown
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: shipgrid
+  policyTypes:
+    - Egress
+  egress:
+    # In-namespace service-to-service.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: shipgrid
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- with .Values.networkPolicy.allowedEgressCIDRs }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+{{- end }}

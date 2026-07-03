@@ -1,0 +1,24 @@
+{{- range $name, $svc := .Values.services }}
+{{- $port := $svc.port | default $.Values.defaults.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipgrid.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" $name "root" $) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: http
+    {{- range $p := $svc.extraPorts }}
+    - name: {{ $p.name }}
+      port: {{ $p.port }}
+      targetPort: {{ $p.targetPort | default $p.port }}
+    {{- end }}
+{{- end }}

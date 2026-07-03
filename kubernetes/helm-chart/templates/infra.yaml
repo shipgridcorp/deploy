@@ -1,0 +1,443 @@
+{{- /*
+Bundled single-node infrastructure for PoC / test installs. NONE of this is HA;
+for production use managed services or operators and point the service configs
+at them (the defaults already resolve bare names: postgres, redis, kafka, neo4j,
+qdrant). Each dep is bare-named so the in-cluster default DSNs find it.
+*/ -}}
+{{- if .Values.infra.postgres.enabled }}
+# ── Postgres init: create the per-service devflow_* databases ──────────────────
+# The services each own a separate database (default DSN .../devflow_<svc>); a
+# single bundled Postgres only creates POSTGRES_DB, so we seed the rest here.
+# Scripts in /docker-entrypoint-initdb.d run once, on an empty data dir.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+data:
+  10-databases.sql: |
+    {{- range .Values.infra.postgres.databases }}
+    SELECT 'CREATE DATABASE {{ . }}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ . }}')\gexec
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "postgres" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "postgres" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: {{ .Values.infra.postgres.image }}
+          ports:
+            - { name: pg, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER,     value: {{ .Values.infra.postgres.auth.user | quote }} }
+            - { name: POSTGRES_PASSWORD, value: {{ .Values.infra.postgres.auth.password | quote }} }
+            # PVC root holds lost+found on ext4 → initdb refuses a non-empty dir.
+            # Point PGDATA at a subdir of the mounted volume (standard fix).
+            - { name: PGDATA,            value: /var/lib/postgresql/data/pgdata }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.infra.postgres.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.infra.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "postgres" "root" $) | nindent 4 }}
+  ports:
+    - { name: pg, port: 5432, targetPort: pg }
+{{- end }}
+{{- if .Values.infra.redis.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "redis" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "redis" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: redis
+          image: {{ .Values.infra.redis.image }}
+          # Match the password the services use (REDIS_URL / REDIS_PASSWORD in
+          # shipgrid-secrets), otherwise clients sending AUTH get rejected.
+          command: ["redis-server", "--requirepass", "$(REDIS_PASSWORD)"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shipgrid-secrets
+                  key: REDIS_PASSWORD
+          ports:
+            - { name: redis, containerPort: 6379 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "redis" "root" $) | nindent 4 }}
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+{{- end }}
+{{- if .Values.infra.kafka.enabled }}
+---
+# Single-node Kafka in KRaft mode (no ZooKeeper). Bare name kafka:9092 matches
+# the KAFKA_BROKERS default.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kafka
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "kafka" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "kafka" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      # bitnami kafka runs as uid 1001; make the PVC group-writable.
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: kafka
+          image: {{ .Values.infra.kafka.image }}
+          ports:
+            - { name: kafka, containerPort: 9092 }
+          env:
+            - { name: KAFKA_CFG_NODE_ID, value: "0" }
+            - { name: KAFKA_CFG_PROCESS_ROLES, value: "controller,broker" }
+            # Single-node combined broker+controller: the controller lives in
+            # THIS pod. The `kafka` Service only exposes 9092, so point the voter
+            # at localhost:9093 (self) instead of the service name.
+            - { name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS, value: "0@localhost:9093" }
+            - { name: KAFKA_CFG_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
+            - { name: KAFKA_CFG_ADVERTISED_LISTENERS, value: "PLAINTEXT://kafka:9092" }
+            - { name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
+            - { name: KAFKA_CFG_INTER_BROKER_LISTENER_NAME, value: "PLAINTEXT" }
+            - { name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+          volumeMounts:
+            - { name: data, mountPath: /bitnami/kafka }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.infra.kafka.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.infra.kafka.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "kafka" "root" $) | nindent 4 }}
+  ports:
+    - { name: kafka, port: 9092, targetPort: kafka }
+{{- end }}
+{{- if .Values.infra.neo4j.enabled }}
+---
+# Single-node Neo4j. NEO4J_AUTH must match NEO4J_USER/NEO4J_PASSWORD the services
+# use (neo4j / shipgrid-secrets.NEO4J_PASSWORD). bolt://neo4j:7687 = the default.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: neo4j
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "neo4j" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "neo4j" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      # neo4j runs as uid 7474; make the PVC group-writable so it can write /data.
+      securityContext:
+        fsGroup: 7474
+      containers:
+        - name: neo4j
+          image: {{ .Values.infra.neo4j.image }}
+          ports:
+            - { name: bolt, containerPort: 7687 }
+            - { name: http, containerPort: 7474 }
+          env:
+            # NB: neo4j treats every NEO4J_* env var as a config setting, so the
+            # password helper var must NOT be NEO4J_-prefixed. NEO4J_AUTH is the
+            # one documented exception the image consumes specially.
+            - name: GRAPH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shipgrid-secrets
+                  key: NEO4J_PASSWORD
+            - name: NEO4J_AUTH
+              value: "neo4j/$(GRAPH_PASSWORD)"
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.infra.neo4j.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.infra.neo4j.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "neo4j" "root" $) | nindent 4 }}
+  ports:
+    - { name: bolt, port: 7687, targetPort: bolt }
+    - { name: http, port: 7474, targetPort: http }
+{{- end }}
+{{- if .Values.infra.qdrant.enabled }}
+---
+# Single-node Qdrant. qdrant:6334 (gRPC) = the QDRANT_ADDR default; 6333 = REST.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qdrant
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: qdrant
+spec:
+  serviceName: qdrant
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "qdrant" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "qdrant" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: qdrant
+          image: {{ .Values.infra.qdrant.image }}
+          ports:
+            - { name: rest, containerPort: 6333 }
+            - { name: grpc, containerPort: 6334 }
+          volumeMounts:
+            - { name: data, mountPath: /qdrant/storage }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.infra.qdrant.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.infra.qdrant.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "qdrant" "root" $) | nindent 4 }}
+  ports:
+    - { name: rest, port: 6333, targetPort: rest }
+    - { name: grpc, port: 6334, targetPort: grpc }
+{{- end }}
+{{- if .Values.infra.clickhouse.enabled }}
+---
+# Single-node ClickHouse — LLM gateway usage analytics (the `requests` table +
+# hourly MVs). gate connects via CLICKHOUSE_URL=clickhouse://clickhouse:9000/default
+# and auto-applies its embedded migrations on startup.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: clickhouse
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "clickhouse" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "clickhouse" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 101            # clickhouse user in the official image
+      containers:
+        - name: clickhouse
+          image: {{ .Values.infra.clickhouse.image }}
+          ports:
+            - { name: native, containerPort: 9000 }
+            - { name: http, containerPort: 8123 }
+          # The official image is happy single-node with the built-in `default`
+          # user (no password) reachable in-cluster; keep ulimits sane for k8s.
+          env:
+            - { name: CLICKHOUSE_DB, value: "default" }
+            - { name: CLICKHOUSE_PASSWORD, value: {{ .Values.infra.clickhouse.password | quote }} }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/clickhouse }
+          readinessProbe:
+            httpGet: { path: /ping, port: 8123 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.infra.clickhouse.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.infra.clickhouse.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "clickhouse" "root" $) | nindent 4 }}
+  ports:
+    - { name: native, port: 9000, targetPort: native }
+    - { name: http, port: 8123, targetPort: http }
+{{- end }}
+{{- if .Values.infra.kroki.enabled }}
+---
+# Kroki — server-side C4/PlantUML SVG rendering. Stateless, single all-in-one
+# container. ai-analysis reaches it at http://kroki:8000
+# (its KROKI_URL default), so architecture diagrams render server-side instead
+# of falling back to the in-app parser.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kroki
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kroki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "kroki" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "kroki" "root" $) | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: kroki
+          image: {{ .Values.infra.kroki.image }}
+          ports:
+            - { name: http, containerPort: 8000 }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kroki
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "kroki" "root" $) | nindent 4 }}
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+{{- end }}

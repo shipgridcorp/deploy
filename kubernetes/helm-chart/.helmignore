@@ -1,0 +1,22 @@
+# Patterns to exclude when packaging the chart (helm package / helm push).
+# Chart-at-root layout: repo tooling lives beside the chart — keep it out of the .tgz.
+.git
+.gitignore
+.github/
+.claude
+.DS_Store
+*.swp
+*.bak
+CHANGELOG.md
+# air-gap bundles / archives / packaged charts
+*.tar
+*.tar.gz
+*.sha256
+*.tgz
+# never package secret material
+secrets/
+secrets-summary.txt
+*.key
+*_ed25519.key
+license.json
+*.signed.json

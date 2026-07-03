@@ -1,0 +1,32 @@
+ShipGrid on-prem ({{ .Chart.Name }}-{{ .Chart.Version }}) installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Services deployed: {{ len .Values.services }}
+RU LLM block: {{ .Values.llm.blockForeignProviders }} (mock={{ .Values.llm.mockEnabled }})
+License: {{ if .Values.license.enabled }}enabled{{ if not .Values.license.file }} (⚠ no license file provided — billing will be degraded){{ end }}{{ else }}disabled{{ end }}
+
+Next steps:
+1. Ensure every `config: true` service has a real config.yaml. Bundled:
+   {{ range $n, $s := .Values.services }}{{ if $s.config }}{{ $n }} {{ end }}{{ end }}.
+   All {{ len .Values.services }} services ship with a working config (dev
+   defaults; the flexible config loader resolves the rest from in-cluster
+   defaults). Review/harden for production (secrets, external DB URLs).
+2. Deploy peer infra Services named bare in-namespace so configs resolve:
+   postgres, redis, kafka, clickhouse, neo4j, qdrant (managed or operator). The
+   bundled postgres/redis are PoC-only:
+   postgres={{ .Values.infra.postgres.enabled }} redis={{ .Values.infra.redis.enabled }}.
+3. Set a real LLM:
+     --set llm.yandex.apiKey=... --set llm.yandex.folderId=... --set llm.mockEnabled=false
+   or GigaChat (--set llm.gigachat.authKey=..., mount the Russian Trusted CA).
+4. Provide a signed license:
+     helm upgrade ... --set-file license.file=license.signed.json --set license.publicKeyHex=<hex>
+5. Lock egress for production: --set networkPolicy.enabled=true (+ allowedEgressCIDRs).
+6. Edge gateway is {{ if .Values.gateway.enabled }}ON{{ else }}OFF{{ end }} — set gateway.resolver to your CoreDNS
+   ClusterIP (kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}').
+7. External access: --set ingress.enabled=true with ingress.app.host / ingress.tls.
+   Currently ingress={{ .Values.ingress.enabled }}. SPA: --set frontends.enabled=true
+   (default :onprem-* images are same-origin, host-agnostic). frontends={{ .Values.frontends.enabled }}.
+
+Access (in-cluster): http://gateway (app:80, admin:81, landing:82).
+
+Check status:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/part-of=shipgrid

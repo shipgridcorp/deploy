@@ -1,0 +1,69 @@
+{{- if .Values.gateway.enabled }}
+# Edge nginx — one origin for SPA + API (replicates the compose gateway). It
+# proxies /api/v1/* to backend Services by bare name, so it works in-namespace.
+# Variable proxy_pass needs an nginx resolver → set gateway.resolver to your
+# cluster's CoreDNS (kube-dns) ClusterIP.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-nginx
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+data:
+  nginx.conf: |
+{{ .Files.Get "files/gateway-nginx.conf" | replace "RESOLVER_PLACEHOLDER" .Values.gateway.resolver | replace "DNSSUFFIX_PLACEHOLDER" (printf "%s.svc.cluster.local" .Release.Namespace) | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "shipgrid.selectorLabels" (dict "name" "gateway" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.podLabels" (dict "name" "gateway" "root" $) | nindent 8 }}
+      annotations:
+        checksum/nginx: {{ .Files.Get "files/gateway-nginx.conf" | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: gateway
+          image: {{ .Values.gateway.image }}
+          ports:
+            - { name: app,     containerPort: 80 }
+            - { name: admin,   containerPort: 81 }
+            - { name: landing, containerPort: 82 }
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: conf
+          configMap:
+            name: gateway-nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+spec:
+  type: {{ .Values.gateway.serviceType | default "ClusterIP" }}
+  selector:
+    {{- include "shipgrid.selectorLabels" (dict "name" "gateway" "root" $) | nindent 4 }}
+  ports:
+    - { name: app,     port: 80, targetPort: app }
+    - { name: admin,   port: 81, targetPort: admin }
+    - { name: landing, port: 82, targetPort: landing }
+{{- end }}

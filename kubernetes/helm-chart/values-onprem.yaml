@@ -1,0 +1,46 @@
+# Example production-ish on-prem overrides. Use with:
+#   helm install shipgrid ./shipgrid -n shipgrid --create-namespace \
+#     -f values-onprem.yaml \
+#     --set-file license.file=license.signed.json
+#
+# Secrets (LLM keys, license public key, internalAuthSecret) belong in a values
+# file you keep out of git, or in --set / a SealedSecret. Do NOT commit them.
+
+global:
+  registry: harbor.internal.example.ru/shipgrid   # your air-gapped registry mirror
+  internalAuthSecret: "CHANGE-ME-32B-min-shared-across-all-services"
+
+# Rotate every dev default before going live — generate with e.g.
+# `openssl rand -hex 32` / `openssl rand -base64 32`. redisURL is left unset
+# so the chart derives it from redisPassword automatically (see values.yaml).
+secrets:
+  jwtSecret: "REPLACE-with-openssl-rand-hex-32"
+  encryptionKey: "REPLACE-with-openssl-rand-base64-32"
+  redisPassword: "REPLACE-with-openssl-rand-hex-24"
+  neo4jPassword: "REPLACE-with-openssl-rand-hex-24"
+
+llm:
+  blockForeignProviders: true
+  mockEnabled: false
+  yandex:
+    apiKey: "REPLACE"
+    folderId: "REPLACE"
+  # or GigaChat:
+  # gigachat:
+  #   authKey: "REPLACE"        # base64(client_id:client_secret)
+  #   scope: "GIGACHAT_API_CORP"
+  #   caFile: "/etc/ssl/certs/russian-trusted-root-ca.pem"
+
+license:
+  enabled: true
+  publicKeyHex: "REPLACE-with-ed25519-public-key-hex"
+
+networkPolicy:
+  enabled: true
+  allowedEgressCIDRs:
+    - "0.0.0.0/0"   # TIGHTEN: restrict to your RF LLM / registry / DB egress only
+
+# PoC convenience only — disable for production and use managed DBs.
+infra:
+  postgres: { enabled: true }
+  redis:    { enabled: true }
