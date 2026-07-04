@@ -35,3 +35,15 @@ providers:
     api_key: ${YANDEX_API_KEY:-}
     project: ${YANDEX_FOLDER_ID:-}
     base_url: ${YANDEX_LLM_BASE_URL:-}
+  # Self-hosted OpenAI-compatible endpoint (vLLM/Ollama/TGI). base_url is enough —
+  # api_key may stay blank if the server needs no auth. See docs/local-models.md.
+  # local:
+  #   base_url: http://vllm.internal:8000/v1
+  #   api_key: ""
+  #   timeout_seconds: 300
+
+# Extra model→provider routing entries: needed when a self-hosted model must
+# coexist with cloud vendors (without an alias an unknown model name routes to
+# the "openai" provider). See docs/local-models.md.
+# model_aliases:
+#   qwen3-32b-instruct: local

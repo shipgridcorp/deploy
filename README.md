@@ -112,8 +112,9 @@ calculation is in Part 2 of the installation guide.
 | **Self-hosted** | vLLM/Ollama/TGI on your GPU node — OpenAI-compatible endpoint inside the perimeter, zero egress |
 | Foreign (non-RU installs only) | OpenAI/Anthropic keys with `BLOCK_FOREIGN_LLM=false` |
 
-Model selection, GPU sizing and an honest quality-gap discussion are in Part 7
-of the installation guide.
+Wiring a self-hosted endpoint (single-model and hybrid setups) is covered in
+[docs/local-models.md](docs/local-models.md). Model selection, GPU sizing and an
+honest quality-gap discussion are in Part 7 of the installation guide.
 
 ## Before production
 
