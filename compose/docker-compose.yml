@@ -171,7 +171,7 @@ services:
 
   ai-settings:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-settings:${AI_SETTINGS_TAG:-v0.7.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-settings:${AI_SETTINGS_TAG:-v0.8.1}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_ai_settings?sslmode=disable
