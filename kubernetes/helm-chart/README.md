@@ -153,7 +153,7 @@ instead — see `configs/security/config.yaml` for a worked example.
 | **Mock** (default) | `llm.mockEnabled=true` — no real LLM; stub answers, for validating the install |
 | **YandexGPT** | `--set llm.yandex.apiKey=… --set llm.yandex.folderId=… --set llm.mockEnabled=false` |
 | **GigaChat** | `--set llm.gigachat.authKey=…` `--set llm.gigachat.scope=…`, mount the Russian Trusted Root CA in `llm.gigachat.caFile` |
-| **Self-hosted** | run a vLLM/Ollama/TGI OpenAI-compatible endpoint in the namespace, add its provider name to the gate config `llm_policy.allowed_providers`, set its `base_url` |
+| **Self-hosted** | run a vLLM/Ollama/TGI OpenAI-compatible endpoint in the namespace, `--set llm.local.baseURL=…` (+ `llm.local.apiKey` if it needs auth), and add `local` to the gate config's `llm_policy.allowed_providers` — see [docs/local-models.md](../../docs/local-models.md) |
 | **Foreign (non-RU only)** | `--set llm.blockForeignProviders=false --set llm.openai.apiKey=…` (or `llm.anthropic.*`) |
 
 `llm.blockForeignProviders=true` (default) blocks OpenAI/Anthropic stack-wide. A

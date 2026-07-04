@@ -112,6 +112,15 @@ llm:
   anthropic:
     apiKey: ""
     baseURL: ""
+  # Self-hosted OpenAI-compatible model (vLLM/Ollama/TGI) — runs inside your
+  # perimeter regardless of blockForeignProviders. Setting baseURL here is not
+  # enough on its own: also add "local" to configs/gate/config.yaml's
+  # llm_policy.allowed_providers (a custom provider name needs an explicit
+  # opt-in — the chart can't infer that base_url points inside your network).
+  # See docs/local-models.md.
+  local:
+    apiKey: ""
+    baseURL: ""
   mockEnabled: true   # set false once a real LLM is configured
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────

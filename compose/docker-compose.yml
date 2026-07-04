@@ -109,6 +109,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      # Self-hosted OpenAI-compatible model (vLLM/Ollama/TGI) — see docs/local-models.md.
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-}
+      LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
       # LLM usage analytics (admin console tab) live in ClickHouse; gate
       # auto-migrates the schema on startup.
       CLICKHOUSE_URL: clickhouse://default:${CLICKHOUSE_PASSWORD:-devflowclickhouse}@clickhouse:9000/default

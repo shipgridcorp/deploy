@@ -34,8 +34,9 @@ The bundle goes straight into the local Docker daemon; no registry needed:
 ```bash
 cd ../compose
 ./install.sh --bundle /path/to/shipgrid-onprem-images.tar.gz
-# .env: YANDEX_LLM_BASE_URL=http://<vllm-host>:<port>/v1
+# .env: LOCAL_LLM_BASE_URL=http://<vllm-host>:<port>/v1
 #       LICENSE_PUBLIC_KEY=<hex>   (license.signed.json → ./license.json)
+# + add "local" to llm_policy.allowed_providers, config/gate/config.yaml
 ```
 
 ## C2 — Kubernetes
@@ -48,8 +49,9 @@ chart exactly as in [Scenario B](../kubernetes/) with three air-gap overrides:
 ```
 
 - `--set global.registry=harbor.internal/shipgrid` — images only from inside;
-- LLM = a Service in the namespace: `--set llm.yandex.baseURL=http://vllm:8000/v1`
-  (or add the provider to the gate config's `allowed_providers`);
+- LLM = a Service in the namespace: `--set llm.local.baseURL=http://vllm:8000/v1`
+  + add `local` to the gate config's `llm_policy.allowed_providers`
+  (a custom provider name needs an explicit opt-in — see [docs/local-models.md](../docs/local-models.md));
 - `--set networkPolicy.enabled=true` with **default-deny egress** — no outbound
   traffic at all.
 

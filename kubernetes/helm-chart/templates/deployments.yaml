@@ -130,6 +130,10 @@ spec:
               value: {{ $.Values.llm.anthropic.apiKey | quote }}
             - name: ANTHROPIC_BASE_URL
               value: {{ $.Values.llm.anthropic.baseURL | quote }}
+            - name: LOCAL_LLM_API_KEY
+              value: {{ $.Values.llm.local.apiKey | quote }}
+            - name: LOCAL_LLM_BASE_URL
+              value: {{ $.Values.llm.local.baseURL | quote }}
             {{- end }}
             {{- /* LICENSE_ENABLED / LICENSE_FILE / LICENSE_PUBLIC_KEY come from
                    the shared shipgrid-config ConfigMap (envFrom above) so the

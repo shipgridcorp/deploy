@@ -66,7 +66,7 @@ given, creates `.env` from the template, verifies the license file is in place
 | Mock (default) | `MOCK_PROVIDER_ENABLED=true` — stub answers, no real LLM |
 | YandexGPT | `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`, `MOCK_PROVIDER_ENABLED=false` |
 | GigaChat | `GIGACHAT_AUTH_KEY`, `GIGACHAT_SCOPE`, `GIGACHAT_CA_FILE` (CA Минцифры) |
-| Self-hosted | `YANDEX_LLM_BASE_URL=http://<vllm-host>:<port>/v1` — model selection in Part 7 of the guide |
+| Self-hosted | `LOCAL_LLM_BASE_URL=http://<vllm-host>:<port>/v1` + add `local` to `allowed_providers` in `config/gate/config.yaml` — see [docs/local-models.md](../docs/local-models.md) and Part 7 of the guide |
 
 Foreign providers (OpenAI/Anthropic) are honoured only with
 `BLOCK_FOREIGN_LLM=false` — for installs outside the RF regulatory scope.

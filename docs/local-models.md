@@ -7,47 +7,65 @@ config-only change. No image rebuilds.
 
 Minimum versions: `gate` ≥ v1.24.0, `ai-analysis` ≥ v1.249.0.
 
+## The `local` provider — set once, works for one model or several
+
+Every deploy target (Compose, Kubernetes, air-gap) already ships a `local`
+provider entry in `config/gate/config.yaml`, driven by env vars — no need to
+write YAML from scratch:
+
+```yaml
+providers:
+  local:
+    base_url: ${LOCAL_LLM_BASE_URL:-}
+    api_key: ${LOCAL_LLM_API_KEY:-}
+    timeout_seconds: 300   # local models are often slower; default is 120
+```
+
+It is named `local`, not `openai`, on purpose: the built-in `openai` provider is
+gated by `llm_policy.allowed_providers` like any foreign vendor, so on the
+default RU/on-prem policy (`BLOCK_FOREIGN_LLM=true`) it never instantiates
+regardless of `base_url` — pointing a self-hosted model at `OPENAI_BASE_URL`
+silently does nothing there. `local` avoids that trap, but still needs one
+manual opt-in (a custom provider name isn't domestic-by-default even though it
+never leaves your perimeter — the policy has no way to know that from
+`base_url` alone):
+
+```yaml
+llm_policy:
+  allowed_providers: ["local"]
+```
+
 ## Option A — one local model for everything
 
-The gate routes any model name it does not recognise to the `openai` provider,
-and that provider accepts a `base_url` override. So for a single self-hosted
-endpoint you only need two env vars on the gate container:
-
 ```env
-OPENAI_BASE_URL=http://vllm.internal:8000/v1
-OPENAI_API_KEY=anything-your-server-accepts   # blank is fine if the server needs no auth
+LOCAL_LLM_BASE_URL=http://vllm.internal:8000/v1
+LOCAL_LLM_API_KEY=anything-your-server-accepts   # blank is fine if the server needs no auth
 ```
+
+(Compose: set these in `.env`. Kubernetes: `--set llm.local.baseURL=… --set llm.local.apiKey=…`.)
 
 Then set the model name your server expects (e.g. `qwen3-32b-instruct`) as the
 global default — or per feature — in the admin console under **AI Settings**.
 Done: every feature now talks to your endpoint.
 
+> Non-RU installs only (`BLOCK_FOREIGN_LLM=false`): you can use the `openai`
+> provider instead of `local` — `OPENAI_BASE_URL`/`OPENAI_API_KEY` — since it's
+> unblocked there and needs no `allowed_providers` entry. On the RU/on-prem
+> default, use `local` as above.
+
 ## Option B — hybrid: cloud vendor + local model side by side
 
 When some features should stay on a cloud vendor and others move to your GPU,
-give the local endpoint its own provider entry and alias its model names to it
-in `config/gate/config.yaml`:
+alias the specific model names to `local` in `config/gate/config.yaml` (set
+`LOCAL_LLM_BASE_URL`/`LOCAL_LLM_API_KEY` as above, then add):
 
 ```yaml
-providers:
-  local:
-    base_url: http://vllm.internal:8000/v1
-    api_key: ""            # omit auth entirely, or set a token
-    timeout_seconds: 300   # local models are often slower; default is 120
-
-# model name → provider. Without an alias an unknown model name would fall
-# back to the "openai" provider (i.e. the cloud vendor in a hybrid setup).
+# model name → provider. Without an alias an unknown model name falls back to
+# the "openai" provider (i.e. the cloud vendor in a hybrid setup) — blocked by
+# default under the RU policy, same as above.
 model_aliases:
   qwen3-32b-instruct: local
   deepseek-r1-distill-32b: local
-```
-
-If the install runs with `BLOCK_FOREIGN_LLM=true` (RU perimeter), also allow the
-custom provider name:
-
-```yaml
-llm_policy:
-  allowed_providers: ["local"]
 ```
 
 Restart the gate, then assign the aliased model names to the features you want

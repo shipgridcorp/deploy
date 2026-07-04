@@ -31,16 +31,22 @@ providers:
     base_url: ${ANTHROPIC_BASE_URL:-}
   # api_key = Yandex Cloud service-account API key (Api-Key auth);
   # project = folder id. Blank → mock-only until real credentials are provisioned.
+  # base_url only overrides Yandex Cloud's own endpoint (regional/proxy) — it is
+  # NOT the self-hosted-model hook, use the "local" provider below for that.
   yandexgpt:
     api_key: ${YANDEX_API_KEY:-}
     project: ${YANDEX_FOLDER_ID:-}
     base_url: ${YANDEX_LLM_BASE_URL:-}
-  # Self-hosted OpenAI-compatible endpoint (vLLM/Ollama/TGI). base_url is enough —
-  # api_key may stay blank if the server needs no auth. See docs/local-models.md.
-  # local:
-  #   base_url: http://vllm.internal:8000/v1
-  #   api_key: ""
-  #   timeout_seconds: 300
+  # Self-hosted OpenAI-compatible endpoint (vLLM/Ollama/TGI), e.g. set
+  # llm.local.baseURL in values.yaml (→ LOCAL_LLM_BASE_URL). api_key may stay
+  # blank if the server needs no auth. Also add "local" to
+  # llm_policy.allowed_providers above — a custom provider name isn't
+  # domestic-by-default even though it never leaves your perimeter (152-ФЗ
+  # policy can't tell where base_url points). See docs/local-models.md.
+  local:
+    base_url: ${LOCAL_LLM_BASE_URL:-}
+    api_key: ${LOCAL_LLM_API_KEY:-}
+    timeout_seconds: 300
 
 # Extra model→provider routing entries: needed when a self-hosted model must
 # coexist with cloud vendors (without an alias an unknown model name routes to
