@@ -6,14 +6,23 @@
 # mock_provider.enabled ← env MOCK_PROVIDER_ENABLED, provider API keys ← env.
 llm_policy:
   # Add a self-hosted OpenAI-compatible provider name here to allow it inside
-  # the perimeter while foreign providers stay blocked (152-ФЗ).
-  allowed_providers: []
+  # the perimeter while foreign providers stay blocked (152-ФЗ). "local" is kept
+  # here for the gate ≥ v1.24.0 path; on v1.23.0 this install instead routes the
+  # in-cluster Ollama through the built-in `openai` provider with a base_url
+  # override (see deploy/docs/local-models.md and the install overlay).
+  allowed_providers:
+    - local
+    - localembed
+{{- range $name, $p := .Values.llm.localProviders }}
+    - {{ $name }}
+{{- end }}
 
 # Fallback order when a request doesn't pin a provider. Foreign providers
 # (openai/anthropic) are listed first but only instantiate when
 # block_foreign_providers=false (BLOCK_FOREIGN_LLM env). In an RU build / RU
 # deployment they are blocked and the gate falls through to yandexgpt → mock.
 fallback_order:
+  - local
   - openai
   - anthropic
   - yandexgpt
@@ -47,9 +56,56 @@ providers:
     base_url: ${LOCAL_LLM_BASE_URL:-}
     api_key: ${LOCAL_LLM_API_KEY:-}
     timeout_seconds: 300
+  # Separate self-hosted endpoint for EMBEDDINGS (repo indexing / RAG). Kept apart
+  # from `local` so a chat model and the embedder can run on different inference
+  # servers — on a small node one Ollama can't hold a 7B chat model AND the
+  # embedder without thrashing/OOM. Blank base_url → falls back to `local`.
+  localembed:
+    base_url: ${LOCAL_EMBED_LLM_BASE_URL:-}
+    api_key: ${LOCAL_EMBED_LLM_API_KEY:-}
+    timeout_seconds: 300
+{{- /* Additional self-hosted OpenAI-compatible providers, one per entry in
+       .Values.llm.localProviders — each is its own model on its own URL (chat,
+       security, reasoning, …), same interface. base_url/api_key arrive as env
+       LLM_LOCAL_<NAME>_BASE_URL/_API_KEY (set by the chart from the same map).
+       The gate builds a generic openai-compatible client for any custom name. */}}
+{{- range $name, $p := .Values.llm.localProviders }}
+  {{ $name }}:
+    base_url: ${LLM_LOCAL_{{ $name | upper | replace "-" "_" }}_BASE_URL:-}
+    api_key: ${LLM_LOCAL_{{ $name | upper | replace "-" "_" }}_API_KEY:-}
+    timeout_seconds: {{ $p.timeoutSeconds | default 300 }}
+{{- end }}
 
 # Extra model→provider routing entries: needed when a self-hosted model must
 # coexist with cloud vendors (without an alias an unknown model name routes to
 # the "openai" provider). See docs/local-models.md.
-# model_aliases:
-#   qwen3-32b-instruct: local
+model_aliases:
+  # In-cluster Ollama models routed to the self-hosted `local` provider
+  # (gate ≥ v1.24.0). base_url → http://llm-ollama:11434/v1.
+  "qwen2.5-coder:3b": local
+  "qwen2.5-coder:7b": local
+  qwen2.5-coder-7b-instruct: local
+  # Embedding model (indexing/RAG). Services send it via EMBEDDING_MODEL; route
+  # it to the in-cluster Ollama so repository indexing embeds locally. Pair with
+  # EMBEDDING_DIM matching this model's output (nomic-embed-text = 768).
+  nomic-embed-text: localembed
+  # On-prem catch-all: platform AI features (BA/SA, service docs, endpoint
+  # extraction, triage, …) default to cloud model names. With foreign providers
+  # blocked those 404 ("model 'gpt-5-mini' not found"). Route the common defaults
+  # to the local chat model so every AI feature works in-perimeter. Adjust the
+  # per-feature model in the admin AI Settings if you want finer control.
+  gpt-5: local
+  gpt-5-mini: local
+  gpt-5.4: local
+  gpt-4o: local
+  gpt-4o-mini: local
+  gpt-4.1: local
+  gpt-4.1-mini: local
+{{- /* Route each model listed under a llm.localProviders entry to that provider,
+       so a request for that model name hits the right URL. Assign the model to a
+       feature in the admin AI Settings to actually use it there. */}}
+{{- range $name, $p := .Values.llm.localProviders }}
+{{- range $m := ($p.models | default list) }}
+  {{ $m | quote }}: {{ $name }}
+{{- end }}
+{{- end }}

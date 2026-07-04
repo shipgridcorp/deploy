@@ -1,0 +1,89 @@
+{{- if .Values.adminBootstrap.password }}
+# ── First-admin seed (deterministic, env/values-driven) ───────────────────────
+# When adminBootstrap.password is set, this post-install/upgrade hook Job upserts
+# the system admin (adminBootstrap.email) directly in devflow_admin_auth with a
+# bcrypt hash (pgcrypto), so the client owns the first admin from values — no need
+# to scrape the random temp password from the admin-auth log. Idempotent.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-admin-seed
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+  annotations:
+    # Created just before the hook Job so the Job can read it; cleaned with the release.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+type: Opaque
+stringData:
+  admin-email: {{ .Values.adminBootstrap.email | quote }}
+  admin-password: {{ .Values.adminBootstrap.password | quote }}
+  db-password: {{ .Values.adminBootstrap.db.password | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-admin-seed
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/component: admin-seed
+    spec:
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: admin-seed
+          # Reuse the bundled Postgres image — it ships psql and is already in the
+          # (air-gap) image set. For a managed DB set adminBootstrap.db.* to it.
+          image: {{ .Values.infra.postgres.image }}
+          imagePullPolicy: {{ .Values.defaults.imagePullPolicy }}
+          env:
+            - { name: PGHOST,     value: {{ .Values.adminBootstrap.db.host | quote }} }
+            - { name: PGPORT,     value: {{ .Values.adminBootstrap.db.port | quote }} }
+            - { name: PGDATABASE, value: {{ .Values.adminBootstrap.db.name | quote }} }
+            - { name: PGUSER,     value: {{ .Values.adminBootstrap.db.user | quote }} }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-admin-seed, key: db-password } }
+            - name: ADMIN_EMAIL
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-admin-seed, key: admin-email } }
+            - name: ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-admin-seed, key: admin-password } }
+            - { name: FORCE_CHANGE, value: {{ .Values.adminBootstrap.forcePasswordChange | quote }} }
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "admin-seed: waiting for admin-auth to create system_admin_users ..."
+              i=0
+              until psql -tAc "SELECT to_regclass('public.system_admin_users')" | grep -q system_admin_users; do
+                i=$((i+1)); [ "$i" -ge 60 ] && { echo "timed out waiting for system_admin_users table"; exit 1; }
+                sleep 5
+              done
+              echo "admin-seed: upserting admin $ADMIN_EMAIL ..."
+              # -v quoting makes psql parameterize the values safely (no SQL injection).
+              psql -v ON_ERROR_STOP=1 \
+                   -v email="$ADMIN_EMAIL" -v pw="$ADMIN_PASSWORD" -v force="$FORCE_CHANGE" <<'EOSQL'
+              CREATE EXTENSION IF NOT EXISTS pgcrypto;
+              INSERT INTO system_admin_users (email, password_hash, is_active, must_change_password)
+              VALUES (:'email', crypt(:'pw', gen_salt('bf')), TRUE, :'force'::boolean)
+              ON CONFLICT (email) DO UPDATE
+                SET password_hash        = crypt(:'pw', gen_salt('bf')),
+                    is_active            = TRUE,
+                    must_change_password = :'force'::boolean;
+              EOSQL
+              echo "admin-seed: done."
+{{- end }}

@@ -17,6 +17,15 @@ data:
   LICENSE_ENABLED: {{ .Values.license.enabled | quote }}
   LICENSE_FILE: {{ .Values.license.mountPath | quote }}
   LICENSE_PUBLIC_KEY: {{ .Values.license.publicKeyHex | quote }}
+  # Embeddings (repository indexing / RAG). Blank = cloud default
+  # (text-embedding-3-large, 3072-dim via the gate's cloud provider). For
+  # self-hosted embeddings set embedding.model to a model the gate routes to your
+  # in-cluster server (e.g. nomic-embed-text) and embedding.dim to that model's
+  # output size (nomic-embed-text=768). Both are read by every service that shares
+  # Qdrant, so they stay consistent stack-wide. Requires service images built with
+  # EMBEDDING_MODEL/EMBEDDING_DIM support.
+  EMBEDDING_MODEL: {{ .Values.embedding.model | quote }}
+  EMBEDDING_DIM: {{ .Values.embedding.dim | quote }}
 {{- /*
 Per-service ConfigMap, emitted only for services with `config: true`. With the
 flexible loader (file → env → default) the stack boots from defaults + the shared
@@ -39,7 +48,15 @@ metadata:
 data:
   config.yaml: |
 {{- if $content }}
+{{- /* gate's config is rendered through tpl so its local-provider list, aliases
+       and allow-list can be generated from .Values.llm.localProviders (add a
+       self-hosted model = one values entry, no template edits). Other services'
+       configs are emitted verbatim. */}}
+{{- if eq $name "gate" }}
+{{ tpl $content $ | indent 4 }}
+{{- else }}
 {{ $content | indent 4 }}
+{{- end }}
 {{- else }}
     # PLACEHOLDER — supply {{ $name }} config.yaml (copy from your prod
     # *-configmap or deploy/local/config/{{ $name }}). The service will not

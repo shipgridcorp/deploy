@@ -134,6 +134,28 @@ spec:
               value: {{ $.Values.llm.local.apiKey | quote }}
             - name: LOCAL_LLM_BASE_URL
               value: {{ $.Values.llm.local.baseURL | quote }}
+            - name: LOCAL_EMBED_LLM_API_KEY
+              value: {{ ($.Values.llm.localEmbed.apiKey | default $.Values.llm.local.apiKey) | quote }}
+            - name: LOCAL_EMBED_LLM_BASE_URL
+              {{- /* fall back to the chat endpoint when no dedicated embed server is set */}}
+              value: {{ ($.Values.llm.localEmbed.baseURL | default $.Values.llm.local.baseURL) | quote }}
+            {{- /* One env pair per extra self-hosted provider (llm.localProviders).
+                   The gate config reads ${LLM_LOCAL_<NAME>_BASE_URL/_API_KEY}. */}}
+            {{- range $pname, $p := $.Values.llm.localProviders }}
+            - name: LLM_LOCAL_{{ $pname | upper | replace "-" "_" }}_BASE_URL
+              value: {{ $p.baseURL | quote }}
+            - name: LLM_LOCAL_{{ $pname | upper | replace "-" "_" }}_API_KEY
+              value: {{ $p.apiKey | default "" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /* Blind/OOB pentest: point the security engine at the self-hosted
+                   interactsh server (templates/pentest.yaml). ZAP/DAST needs no
+                   env — the engine defaults to http://zap:8080. */}}
+            {{- if and (eq $name "security") $.Values.pentest.oob.enabled }}
+            - name: PENTEST_OOB_SERVER_URL
+              value: {{ printf "http://%s" $.Values.pentest.oob.domain | quote }}
+            - name: PENTEST_OOB_DOMAIN
+              value: {{ $.Values.pentest.oob.domain | quote }}
             {{- end }}
             {{- /* LICENSE_ENABLED / LICENSE_FILE / LICENSE_PUBLIC_KEY come from
                    the shared shipgrid-config ConfigMap (envFrom above) so the

@@ -4,6 +4,58 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.2 — 2026-07-04
+
+Env-driven first admin + optional pentest infrastructure (parity with the SaaS).
+
+### Added
+- **Deterministic first-admin seed.** Set `adminBootstrap.email` + a new
+  `adminBootstrap.password` and a post-install/upgrade **hook Job**
+  (`templates/admin-seed.yaml`) upserts the admin-console admin directly
+  (bcrypt via pgcrypto) — the client owns the first admin from values/env, no
+  scraping the random temp password from the admin-auth log. `forcePasswordChange`
+  toggles must-change-on-first-login. `adminBootstrap.db.*` targets a managed
+  admin-auth DB when `infra.postgres.enabled=false`.
+- **`scripts/reset-admin.sh`** — standalone reset/seed of a system admin
+  (email+password) for both K8s and Compose installs.
+- **Optional pentest helpers** (`pentest.*`), matching the SaaS deployment:
+  - `pentest.zap.enabled` → OWASP ZAP daemon (DAST). Self-contained; the
+    security service auto-discovers it at `http://zap:8080`. Safe in an isolated
+    contour.
+  - `pentest.oob.enabled` → self-hosted interactsh OOB/OAST server for
+    blind-vuln detection; wires `PENTEST_OOB_SERVER_URL`/`PENTEST_OOB_DOMAIN`
+    onto the security pod. Requires `pentest.oob.domain` + `pentest.oob.publicIP`
+    (public IP + NS/glue DNS delegation) — a template guard fails fast otherwise.
+    Not usable fully air-gapped; the rest of the pentest engine still runs.
+
+## 0.4.1 — 2026-07-04
+
+Bundled-infra and image-pin fixes found during an on-prem reinstall on a small
+(4 vCPU / 8 GB, no-GPU) cluster.
+
+### Changed
+- **Kafka image → `apache/kafka:4.3.1`** (was the deprecated, unmaintained
+  `bitnamilegacy/kafka:3.7`). The bundled Kafka StatefulSet is rewritten for the
+  official image: `KAFKA_`-prefixed config env (not Bitnami's `KAFKA_CFG_*`),
+  `KAFKA_LOG_DIRS=/var/lib/kafka/data`, `fsGroup: 1000`, a pinned `CLUSTER_ID`,
+  and — critically — the data volume is mounted via `subPath: kafka-data` so the
+  ext4 `lost+found` at the PVC root doesn't trip Kafka's "not a topic-partition"
+  log-dir check (same class of fix as `PGDATA=<mount>/pgdata` for Postgres).
+- **`indexing` tag pinned to `v1.61.0`** — the previous `v1.64.0` default is
+  referenced in docs but not published to `registry.shipgrid.app`.
+- **`security` resources** raised to 2Gi memory (from the 512Mi default): its
+  bundled semgrep/checkov scanners OOM under 512Mi during real scans. Note its
+  `/readyz` runs a live scan per tool and the Python scanners can overrun the
+  service's internal probe timeout on CPU-constrained nodes — gate k8s readiness
+  on `/healthz` there (per-service `probes.readiness.path` in your overlay).
+
+### Notes
+- The dedicated `local` LLM provider needs `gate ≥ v1.24.0` /
+  `ai-analysis ≥ v1.249.0` (see `docs/local-models.md`). Until those images are
+  published, route a self-hosted OpenAI-compatible endpoint (vLLM/Ollama) through
+  the built-in `openai` provider with a `base_url` override and
+  `blockForeignProviders: false` — inference still stays in-cluster.
+
 ## 0.4.0 — 2026-07-03
 
 Production-readiness pass: every backend service now gets real health checks,

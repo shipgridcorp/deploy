@@ -152,32 +152,45 @@ spec:
         {{- include "shipgrid.podLabels" (dict "name" "kafka" "root" $) | nindent 8 }}
     spec:
       enableServiceLinks: false
-      # bitnami kafka runs as uid 1001; make the PVC group-writable.
+      # apache/kafka runs as uid 1000 (appuser); make the PVC group-writable so
+      # the broker can write its log dir.
       securityContext:
-        fsGroup: 1001
+        fsGroup: 1000
       containers:
         - name: kafka
           image: {{ .Values.infra.kafka.image }}
           ports:
             - { name: kafka, containerPort: 9092 }
+          # Official apache/kafka image: config env keys are KAFKA_<PROPERTY>
+          # (property dots → underscores), NOT bitnami's KAFKA_CFG_* form. The
+          # image carries a built-in default cluster id and formats an empty log
+          # dir on first boot; CLUSTER_ID is pinned so the format is deterministic
+          # and the resulting meta.properties persists on the PVC across restarts.
           env:
-            - { name: KAFKA_CFG_NODE_ID, value: "0" }
-            - { name: KAFKA_CFG_PROCESS_ROLES, value: "controller,broker" }
+            - { name: CLUSTER_ID, value: "5L6g3nShT-eMCtK--X86sw" }
+            - { name: KAFKA_NODE_ID, value: "0" }
+            - { name: KAFKA_PROCESS_ROLES, value: "broker,controller" }
             # Single-node combined broker+controller: the controller lives in
             # THIS pod. The `kafka` Service only exposes 9092, so point the voter
             # at localhost:9093 (self) instead of the service name.
-            - { name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS, value: "0@localhost:9093" }
-            - { name: KAFKA_CFG_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
-            - { name: KAFKA_CFG_ADVERTISED_LISTENERS, value: "PLAINTEXT://kafka:9092" }
-            - { name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
-            - { name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
-            - { name: KAFKA_CFG_INTER_BROKER_LISTENER_NAME, value: "PLAINTEXT" }
-            - { name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
-            - { name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
-            - { name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
-            - { name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            - { name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: "0@localhost:9093" }
+            - { name: KAFKA_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://kafka:9092" }
+            - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
+            - { name: KAFKA_INTER_BROKER_LISTENER_NAME, value: "PLAINTEXT" }
+            - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            - { name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data" }
           volumeMounts:
-            - { name: data, mountPath: /bitnami/kafka }
+            # subPath so the container's log dir is an empty subdirectory of the
+            # PVC — an ext4 volume root carries a `lost+found` entry, and Kafka
+            # refuses to start on a log dir that contains anything but topic
+            # partitions ("'lost+found' is not in the form of topic-partition").
+            # Same class of fix as PGDATA=<mount>/pgdata for the bundled Postgres.
+            - { name: data, mountPath: /var/lib/kafka/data, subPath: kafka-data }
   volumeClaimTemplates:
     - metadata:
         name: data

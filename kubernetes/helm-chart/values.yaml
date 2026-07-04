@@ -50,12 +50,31 @@ site:
   spBaseURL: ""      # SP_BASE_URL     — SAML SP base (usually = publicAppURL)
 
 # ── First admin bootstrap ───────────────────────────────────────────────────────
-# Set adminBootstrap.email to the client's first admin-console email. On startup
-# admin-auth creates that admin with a generated temporary password (printed once
-# in the admin-auth pod log) and forces a password change on first login.
-# Idempotent: leaving an existing admin untouched. Empty → no bootstrap.
+# Set adminBootstrap.email to the client's first admin-console email.
+#
+# Two modes:
+#  • email only  → admin-auth creates that admin on startup with a RANDOM temp
+#    password (printed once in the admin-auth pod log) + forced change on first
+#    login. Recoverable only from that first log line.
+#  • email + password → a post-install/upgrade hook Job (templates/admin-seed.yaml)
+#    seeds/resets the admin to THIS password deterministically (bcrypt via
+#    pgcrypto), so the client sets the first admin fully from values/env — no log
+#    scraping. Idempotent: re-running upserts the same admin. Rotate after login.
+#
+# The password is install-specific: put it in your secret values file / --set /
+# a SealedSecret, NOT in git.
 adminBootstrap:
-  email: ""   # BOOTSTRAP_ADMIN_EMAIL
+  email: ""            # BOOTSTRAP_ADMIN_EMAIL (also drives the in-service bootstrap)
+  password: ""         # set → hook Job seeds this exact password; empty → random-temp mode
+  forcePasswordChange: false   # true → admin must change the seeded password on first login
+  # DB the seed Job connects to. Defaults match the bundled postgres; point at
+  # your managed admin-auth DB (devflow_admin_auth) when infra.postgres.enabled=false.
+  db:
+    host: postgres
+    port: 5432
+    name: devflow_admin_auth
+    user: devflow
+    password: devflow   # = infra.postgres.auth.password; override for managed DB
 
 # Defaults applied to every service (per-service blocks override via
 # services.<name>.{resources,probes,nodeSelector,tolerations,affinity}).
@@ -121,7 +140,39 @@ llm:
   local:
     apiKey: ""
     baseURL: ""
+  # Separate self-hosted endpoint for EMBEDDINGS (repo indexing / RAG). Keep the
+  # embedder off the chat inference server when one node can't hold both (a 7B
+  # chat model + the embedder thrash/OOM on a small node). Blank baseURL → the
+  # gate's `localembed` provider falls back to `local`.
+  localEmbed:
+    apiKey: ""
+    baseURL: ""
+  # Additional self-hosted models — one per purpose, each its own model on its own
+  # URL (same OpenAI-compatible interface). The gate registers a generic
+  # openai-compatible provider for every entry; list the model name(s) each serves
+  # under `models` so requests for them route to that URL. Then assign a model to a
+  # feature in the admin AI Settings. Example:
+  #   localProviders:
+  #     chatbig:   { baseURL: "http://vllm-qwen32b:8000/v1",  apiKey: "x", models: ["qwen2.5-32b"] }
+  #     security:  { baseURL: "http://vllm-seclm:8000/v1",    apiKey: "x", models: ["sec-model-v1"] }
+  #     reasoning: { baseURL: "http://vllm-deepseek:8000/v1", apiKey: "x", models: ["deepseek-r1"] }
+  # No template edits needed — add an entry here and its provider + model routing
+  # + env are generated. (`local` and `localEmbed` above are the built-in two.)
+  localProviders: {}
   mockEnabled: true   # set false once a real LLM is configured
+
+# ── Embeddings (repository indexing / RAG) ─────────────────────────────────────
+# Blank model + dim 3072 = cloud default: services embed via the gate using
+# text-embedding-3-large (3072-dim). For fully in-perimeter embeddings, point at
+# a self-hosted embedding model served by your in-cluster inference server and
+# routed by the gate (add `<model>: local` under model_aliases in
+# configs/gate/config.yaml). dim MUST equal the model's output size, and applies
+# stack-wide (indexing + every service that reads Qdrant) — changing it recreates
+# tenant collections, so re-index afterwards.
+#   Ollama nomic-embed-text → model: nomic-embed-text, dim: 768
+embedding:
+  model: ""     # EMBEDDING_MODEL — blank → text-embedding-3-large
+  dim: 3072     # EMBEDDING_DIM — 3072 (OpenAI large) | 768 (nomic) | 1024 (bge/mxbai)
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────
 license:
@@ -136,6 +187,39 @@ networkPolicy:
   enabled: false
   # When enabled, default-deny egress except DNS + the CIDRs below (RF LLM, etc.).
   allowedEgressCIDRs: []
+
+# ── Optional pentest infrastructure (DAST + blind/OOB) ─────────────────────────
+# The pentest ENGINE itself ships inside the `security` service. These two
+# OPTIONAL helpers add live-target testing, matching what the SaaS runs:
+#  • zap — OWASP ZAP daemon for DAST (active web scan). Self-contained; when
+#    enabled the security service auto-discovers it at http://zap:8080, no extra
+#    wiring. Safe for an isolated contour.
+#  • oob — self-hosted interactsh server for blind-vuln detection (blind SSRF/
+#    RCE/XXE/SQLi via out-of-band callbacks). REQUIRES site-specific setup: a
+#    public IP + DNS delegation of `oob.domain` to this server (interactsh is an
+#    authoritative DNS server). NOT usable in a fully air-gapped perimeter —
+#    leave disabled there; the rest of the pentest engine still runs.
+pentest:
+  zap:
+    enabled: false
+    image: ghcr.io/zaproxy/zaproxy:stable
+    # api.disablekey=true → no API key needed; security reaches it in-cluster only.
+    resources:
+      requests: { cpu: 250m, memory: 768Mi }
+      limits:   { cpu: "2",  memory: 2Gi }
+  oob:
+    enabled: false
+    image: projectdiscovery/interactsh-server:latest
+    # The public subdomain delegated (NS/glue at your registrar) to this server,
+    # and the public IP interactsh returns in its DNS answers (usually the LB IP).
+    domain: ""          # e.g. oob.company.ru
+    publicIP: ""        # e.g. the reserved LoadBalancer IP
+    # Must receive raw DNS(53)+HTTP(80) from the public internet — a plain
+    # LoadBalancer (not the edge ingress, which can't carry UDP/53).
+    serviceType: LoadBalancer
+    resources:
+      requests: { cpu: 50m,  memory: 96Mi }
+      limits:   { cpu: 300m, memory: 256Mi }
 
 # ── Edge gateway (nginx) — one origin for SPA + API ───────────────────────────
 gateway:
@@ -167,7 +251,7 @@ ingress:
 frontends:
   enabled: false
   items:
-    frontend:         { repo: frontend,         tag: "onprem-v1.500.0", port: 80 }  # client dashboard
+    frontend:         { repo: frontend,         tag: "onprem-v1.526.0", port: 80 }  # client dashboard
     admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.54.0",  port: 80 }
     frontend-landing: { repo: frontend-landing, tag: "onprem-v1.50.0",  port: 80 }
 
@@ -184,19 +268,19 @@ services:
   # Release tags WITH the shared/license.Gate (cut 2026-06-23, one patch above
   # the then-current prod). CI builds these gated images; on-prem enforces the
   # license (prod runs them too but the gate is inert there — no LICENSE_ENABLED).
-  auth:              { image: auth,              tag: v1.39.0,   config: false }
-  admin-auth:        { image: admin-auth,        tag: v1.20.0,   config: false }
+  auth:              { image: auth,              tag: v1.40.0,   config: false }
+  admin-auth:        { image: admin-auth,        tag: v1.22.0,   config: false }
   # platform reaches the connector over gRPC (repo listing / integration checks).
   # The connector serves gRPC on :9090 (HTTP health on :8000) — exposed via
   # connector.extraPorts below. No env override needed: connector:9090 is
   # already platform's code default.
-  platform:          { image: platform,          tag: v1.56.0,   config: false }
+  platform:          { image: platform,          tag: v1.57.0,   config: false }
   billing:           { image: billing,           tag: v1.41.0,   config: false, license: true }
   # gate is the one service off the /healthz+/readyz convention (/health +
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.23.0
+    tag: v1.24.0
     config: true
     probes:
       liveness:  { path: /health }
@@ -206,20 +290,35 @@ services:
   # FOR UPDATE SKIP LOCKED), so >1 replica indexes repositories in parallel.
   # v1.64.0+ defaults services.platform_url to http://platform:8000 (matches
   # every other service) — no env override needed.
-  indexing:          { image: indexing,          tag: v1.64.0,   config: false, replicas: 2 }
+  indexing:          { image: indexing,          tag: v1.65.0,   config: false, replicas: 2 }
   # The six extracted security-platform microservice URLs (policy-engine
   # FR-024, proof-engine FR-034/035, cloud-scanner FR-009, k8s-scanner FR-011,
   # runtime-collector FR-013, findings-correlator FR-038) are set via
   # configs/security/config.yaml, not env — see that file. Unset (delete a
   # line there) = embedded path for that domain.
-  security:          { image: security,          tag: v1.119.0,  config: true }
-  ai-analysis:       { image: ai-analysis,       tag: v1.240.0,  config: false }
+  # Heavier than the default budget: the security service shells out to bundled
+  # scanners (semgrep, checkov, trivy, gitleaks, …) that use ~1–2Gi during real
+  # repo scans, so the default 512Mi limit is too tight. Note also that /readyz
+  # runs a live scan for each tool; the Python scanners (semgrep ~6s, checkov
+  # ~4s) can overrun the service's internal per-scanner probe timeout on
+  # CPU-constrained nodes and get SIGKILLed ("signal: killed"), which shows as
+  # a degraded /readyz even though the tools scan fine. On small-CPU clusters
+  # gate k8s readiness on /healthz instead (see services.security.probes in your
+  # install overlay) — /readyz stays available for scanner monitoring.
+  security:
+    image: security
+    tag: v1.125.0
+    config: true
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits:   { cpu: "2",  memory: 2Gi }
+  ai-analysis:       { image: ai-analysis,       tag: v1.249.0,  config: false }
   ai-settings:       { image: ai-settings,       tag: v0.6.0,    config: false }
   review-processor:  { image: review-processor,  tag: v1.54.0,   config: false }
   webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false }
-  notification:      { image: notification,      tag: v1.9.0,    config: false }
-  task-tracker:      { image: task-tracker,      tag: v1.48.0,   config: false }
-  qa-hub:            { image: qa-hub,             tag: v2.42.0,   config: false }
+  notification:      { image: notification,      tag: v1.11.0,    config: false }
+  task-tracker:      { image: task-tracker,      tag: v1.50.0,   config: false }
+  qa-hub:            { image: qa-hub,             tag: v2.43.0,   config: false }
   dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false }
   delivery-ops:      { image: delivery-ops,      tag: v1.42.0,   config: false }
   realtime-gateway:  { image: realtime-gateway,  tag: v1.1.4,    config: false }
@@ -285,8 +384,12 @@ infra:
     image: redis:7-alpine
   kafka:
     enabled: false
-    # Bitnami moved free images to bitnamilegacy/* in 2025; bitnami/kafka:3.7 is gone.
-    image: bitnamilegacy/kafka:3.7
+    # Official Apache image, KRaft mode. Replaces the deprecated Bitnami image:
+    # Bitnami moved its free images to bitnamilegacy/* in 2025 and bitnamilegacy/
+    # kafka:3.7 is unmaintained. The official image is configured with KAFKA_-
+    # prefixed env (NOT bitnami's KAFKA_CFG_*) and stores data in /var/lib/kafka/
+    # data — the StatefulSet in templates/infra.yaml is written for that contract.
+    image: apache/kafka:4.3.1
     storage: 10Gi
     storageClassName: ""
   neo4j:
