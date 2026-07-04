@@ -280,7 +280,7 @@ services:
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.24.0
+    tag: v1.25.0
     config: true
     probes:
       liveness:  { path: /health }
@@ -313,7 +313,7 @@ services:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
   ai-analysis:       { image: ai-analysis,       tag: v1.249.0,  config: false }
-  ai-settings:       { image: ai-settings,       tag: v0.6.0,    config: false }
+  ai-settings:       { image: ai-settings,       tag: v0.7.0,    config: false }
   review-processor:  { image: review-processor,  tag: v1.54.0,   config: false }
   webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false }
   notification:      { image: notification,      tag: v1.11.0,    config: false }
