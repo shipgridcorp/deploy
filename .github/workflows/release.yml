@@ -1,0 +1,54 @@
+name: release
+
+# On a semver tag (vX.Y.Z): package the Helm chart from kubernetes/helm-chart
+# and push it to the Harbor OCI registry, then attach the .tgz to a GitHub
+# Release. The tag versions the chart (Chart.yaml version must match).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   HARBOR_REGISTRY    e.g. registry.shipgrid.app
+#   HARBOR_CHART_REPO  e.g. registry.shipgrid.app/charts
+#   HARBOR_USER        e.g. robot$charts-push
+#   HARBOR_TOKEN       robot token with push on the charts project
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Verify Chart.yaml version matches the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^version: ${VERSION}$" kubernetes/helm-chart/Chart.yaml \
+            || { echo "Chart.yaml version != tag ${VERSION}"; exit 1; }
+
+      - name: Lint
+        run: helm lint kubernetes/helm-chart
+
+      - name: Package
+        run: helm package kubernetes/helm-chart
+
+      - name: Push to Harbor (OCI)
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_CHART_REPO: ${{ secrets.HARBOR_CHART_REPO }}
+          HARBOR_USER: ${{ secrets.HARBOR_USER }}
+          HARBOR_TOKEN: ${{ secrets.HARBOR_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "$HARBOR_TOKEN" | helm registry login "$HARBOR_REGISTRY" -u "$HARBOR_USER" --password-stdin
+          helm push "shipgrid-${VERSION}.tgz" "oci://${HARBOR_CHART_REPO}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: shipgrid-*.tgz
+          generate_release_notes: true

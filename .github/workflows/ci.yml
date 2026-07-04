@@ -1,0 +1,60 @@
+name: ci
+
+# Validate the whole deployment kit on every push and pull request:
+#   • Helm chart lints and renders (kubernetes/helm-chart)
+#   • Compose file parses with default env (compose/docker-compose.yml)
+#   • Shell scripts pass shellcheck
+#   • Drift guard: the chart and the compose file reference the SAME
+#     ShipGrid image set (both are exports of one release — they must not
+#     diverge silently)
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: helm lint
+        run: helm lint kubernetes/helm-chart
+      - name: helm template (renders cleanly)
+        run: helm template shipgrid kubernetes/helm-chart -f kubernetes/helm-chart/values-onprem.yaml > /dev/null
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose -f compose/docker-compose.yml config --quiet
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck compose/install.sh compose/smoke.sh scripts/rotate-secrets.sh airgap/mirror-to-registry.sh
+
+  image-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: chart and compose reference the same ShipGrid images
+        run: |
+          helm template shipgrid kubernetes/helm-chart --set frontends.enabled=true \
+            | grep -oE 'image: *registry\.shipgrid\.app/shipgrid/[^" ]+' \
+            | sed 's/image: *//' | sort -u > /tmp/chart-images.txt
+          docker compose -f compose/docker-compose.yml config --images \
+            | grep '^registry.shipgrid.app' | sort -u > /tmp/compose-images.txt
+          if ! diff -u /tmp/chart-images.txt /tmp/compose-images.txt; then
+            echo "::error::Image set drift between kubernetes/helm-chart and compose/docker-compose.yml — update tags in BOTH."
+            exit 1
+          fi
+          echo "OK: $(wc -l < /tmp/chart-images.txt) images, identical sets"

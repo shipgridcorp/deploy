@@ -93,8 +93,10 @@ else
   c_grn "✓ Using existing .env"
 fi
 
-# shellcheck disable=SC1091
-set -a; . ./.env 2>/dev/null || true; set +a
+set -a
+# shellcheck source=/dev/null
+. ./.env 2>/dev/null || true
+set +a
 
 # ── 4. License ───────────────────────────────────────────────────────────────
 LIC_HOST="${LICENSE_FILE_HOST:-./license.json}"

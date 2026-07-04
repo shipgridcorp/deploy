@@ -6,14 +6,16 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR" || exit 1
 TIMEOUT="${1:-240}"
 
 if docker compose version >/dev/null 2>&1; then DC=(docker compose); else DC=(docker-compose); fi
 
 # Load .env for URLs.
-# shellcheck disable=SC1091
-set -a; . ./.env 2>/dev/null || true; set +a
+set -a
+# shellcheck source=/dev/null
+. ./.env 2>/dev/null || true
+set +a
 APP_URL="http://localhost:${APP_PORT:-8080}"
 
 # Core services that must be running before we call the stack up.

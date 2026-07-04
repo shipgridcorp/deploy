@@ -5,16 +5,21 @@
 !.env.example
 license.json
 license*.json
+*.signed.json
 *.pem
 *.key
 secrets-summary.txt
 values-secrets*.yaml
 secrets/
 
-# Air-gap bundles
+# Air-gap bundles / packaged charts
 *.tar
 *.tar.gz
+*.tgz
 *.sha256
 
 # OS / editor noise
 .DS_Store
+*.swp
+.idea/
+.claude/
