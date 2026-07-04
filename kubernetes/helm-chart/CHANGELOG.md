@@ -4,6 +4,23 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.3 — 2026-07-04
+
+On-prem-native SSO sign-in.
+
+### Changed
+- **Release pins: `auth v1.41.0`, `frontend onprem-v1.527.0`,
+  `frontend-landing onprem-v1.51.0`** (all mirrored to
+  `registry.shipgrid.app`). The sign-in page now lists the instance's
+  configured identity providers as direct "Continue with <IdP>" buttons
+  instead of the SaaS-style "enter your work email" discovery. Backed by the
+  new public `GET /sso/providers`, which only responds with providers when
+  `LICENSE_ENABLED=true` (already set stack-wide by this chart and the
+  Compose kit — no values change needed). Set an optional `display_name` in
+  `PUT /api/v1/auth/sso/config` for the button label; it falls back to the
+  email domain. Failed IdP callbacks now surface a visible sign-in banner
+  instead of being swallowed.
+
 ## 0.4.2 — 2026-07-04
 
 Env-driven first admin + optional pentest infrastructure (parity with the SaaS).

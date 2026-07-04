@@ -60,7 +60,7 @@ services:
   # ═══════════════════════════ Backend services ═══════════════════════════════
   auth:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/auth:${AUTH_TAG:-v1.40.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/auth:${AUTH_TAG:-v1.41.0}
 
   admin-auth:
     <<: *backend
@@ -258,7 +258,7 @@ services:
   # SPA frontends: on-prem builds (same-origin API base) — host-agnostic behind
   # the gateway; no configuration needed.
   frontend:
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend:${FRONTEND_TAG:-onprem-v1.526.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend:${FRONTEND_TAG:-onprem-v1.527.0}
     restart: unless-stopped
 
   admin-frontend:
@@ -266,7 +266,7 @@ services:
     restart: unless-stopped
 
   frontend-landing:
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend-landing:${FRONTEND_LANDING_TAG:-onprem-v1.50.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend-landing:${FRONTEND_LANDING_TAG:-onprem-v1.51.0}
     restart: unless-stopped
 
   # Edge gateway: one origin for each SPA + the REST/SSE API (no CORS).

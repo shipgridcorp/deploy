@@ -251,9 +251,9 @@ ingress:
 frontends:
   enabled: false
   items:
-    frontend:         { repo: frontend,         tag: "onprem-v1.526.0", port: 80 }  # client dashboard
+    frontend:         { repo: frontend,         tag: "onprem-v1.527.0", port: 80 }  # client dashboard
     admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.54.0",  port: 80 }
-    frontend-landing: { repo: frontend-landing, tag: "onprem-v1.50.0",  port: 80 }
+    frontend-landing: { repo: frontend-landing, tag: "onprem-v1.51.0",  port: 80 }
 
 # ── Backend services ──────────────────────────────────────────────────────────
 # image defaults to {global.registry}/{image}:{tag}. gate uses the llm-gateway image.
@@ -268,7 +268,7 @@ services:
   # Release tags WITH the shared/license.Gate (cut 2026-06-23, one patch above
   # the then-current prod). CI builds these gated images; on-prem enforces the
   # license (prod runs them too but the gate is inert there — no LICENSE_ENABLED).
-  auth:              { image: auth,              tag: v1.40.0,   config: false }
+  auth:              { image: auth,              tag: v1.41.0,   config: false }
   admin-auth:        { image: admin-auth,        tag: v1.22.0,   config: false }
   # platform reaches the connector over gRPC (repo listing / integration checks).
   # The connector serves gRPC on :9090 (HTTP health on :8000) — exposed via
