@@ -54,6 +54,13 @@ smoke test.
 
 ## LLM modes
 
+The recommended way to connect a real LLM is the admin console (`:8081` →
+AI Config → Providers): pick a template (YandexGPT / GigaChat / self-hosted
+OpenAI-compatible), the key is stored encrypted in the DB, Test connection
+hits the real endpoint, and routing picks the provider up live — no restart.
+The `.env` variables below pre-provision a provider for automated / air-gap
+installs where everything must be file-driven:
+
 | Mode | `.env` settings |
 |---|---|
 | Mock (default) | `MOCK_PROVIDER_ENABLED=true` — stub answers, no real LLM |
