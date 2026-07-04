@@ -1,9 +1,9 @@
 {{- if .Values.adminBootstrap.password }}
 # ── First-admin seed (deterministic, env/values-driven) ───────────────────────
 # When adminBootstrap.password is set, this post-install/upgrade hook Job upserts
-# the system admin (adminBootstrap.email) directly in devflow_admin_auth with a
-# bcrypt hash (pgcrypto), so the client owns the first admin from values — no need
-# to scrape the random temp password from the admin-auth log. Idempotent.
+# the system admin (adminBootstrap.email) directly in the admin-auth database with
+# a bcrypt hash (pgcrypto), so the first admin is owned from values — no need to
+# scrape the random temp password from the admin-auth log. Idempotent.
 apiVersion: v1
 kind: Secret
 metadata:

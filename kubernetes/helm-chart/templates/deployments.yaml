@@ -86,6 +86,14 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            {{- /* Each service that owns a database (services.<name>.db) gets a
+                   DATABASE_URL pointing at its logical DB on the bundled
+                   postgres. An explicit services.<name>.env.DATABASE_URL
+                   (managed/external DB) always wins. */}}
+            {{- if and $svc.db (not (hasKey ($svc.env | default dict) "DATABASE_URL")) }}
+            - name: DATABASE_URL
+              value: {{ printf "postgres://%s:%s@postgres:5432/%s?sslmode=disable" $.Values.infra.postgres.auth.user $.Values.infra.postgres.auth.password $svc.db | quote }}
+            {{- end }}
             {{- range $k, $v := $svc.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

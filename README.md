@@ -2,7 +2,7 @@
 
 # ShipGrid · Deploy
 
-**Everything you need to run [ShipGrid](https://shipgrid.app) in your own perimeter** —
+**Deployment kit for running [ShipGrid](https://shipgrid.app) in your own perimeter** —
 Docker Compose on a single VM, a production Kubernetes cluster, or a fully air-gapped environment.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-8a5cff)](LICENSE)
@@ -11,33 +11,26 @@ Docker Compose on a single VM, a production Kubernetes cluster, or a fully air-g
 [![Helm 3.8+](https://img.shields.io/badge/helm-3.8%2B-0f1689?logo=helm&logoColor=white)](kubernetes/helm-chart/)
 [![Air-gapped ready](https://img.shields.io/badge/air--gapped-ready-047857)](airgap/)
 
-[Documentation](https://docs.shipgrid.app) ·
-[Product](https://shipgrid.app) ·
-🇷🇺 Полное руководство по установке — **ShipGrid On-Prem Installation Guide** (входит в поставку, см. [docs.shipgrid.app](https://docs.shipgrid.app))
+[Documentation](https://docs.shipgrid.app) · [Product](https://shipgrid.app)
 
 </div>
 
 ---
 
-ShipGrid is an SDLC + DevSecOps platform. The on-prem delivery runs the whole
-stack inside **your** perimeter: your data never leaves it, AI works through an
-RF-resident LLM (YandexGPT / GigaChat) or a model self-hosted on your GPUs, and
-foreign LLM providers are blocked by default.
+The on-prem delivery runs the whole ShipGrid stack inside **your** perimeter:
+your data never leaves it, AI works through an RF-resident LLM (YandexGPT /
+GigaChat) or a model self-hosted on your GPUs, and foreign LLM providers are
+blocked by default.
 
-This repository is the **deployment kit** that ships with your license: pick a
-scenario, open its folder, follow its README. The step-by-step pipeline in each
-folder matches the *ShipGrid On-Prem Installation Guide* one-to-one.
+Pick a scenario, open its folder, follow its README.
 
 ## Pick your scenario
 
-| Scenario | Folder | Best for | Where data lives | Time to deploy |
-|---|---|---|---|---|
-| **A · Single VM** — Docker Compose | [`compose/`](compose/) | PoC, pilots, small/medium teams | your VM | ~1 day |
-| **B · Kubernetes** — Helm chart | [`kubernetes/`](kubernetes/) | enterprise, HA, your own cluster | your cluster | 1–2 weeks |
-| **C · Air-gapped** — Compose *or* K8s | [`airgap/`](airgap/) | banks, government, critical infrastructure | your isolated segment | weeks¹ |
-| **D · SaaS** — we host it in an RF cloud | — | fastest start, no ops | ShipGrid RF cloud | hours |
-
-¹ the installation itself is fast — security review, GPU/LLM preparation and the transfer process dominate.
+| Scenario | Folder | Best for | Where data lives |
+|---|---|---|---|
+| **A · Single VM** — Docker Compose | [`compose/`](compose/) | PoC, pilots, small/medium teams | your VM |
+| **B · Kubernetes** — Helm chart | [`kubernetes/`](kubernetes/) | enterprise, HA, your own cluster | your cluster |
+| **C · Air-gapped** — Compose *or* K8s | [`airgap/`](airgap/) | isolated perimeters, no internet | your isolated segment |
 
 ```
 deploy/
@@ -50,7 +43,7 @@ deploy/
 
 ## Quick starts
 
-**Single VM (Scenario A)** — one working day on a prepared VM:
+**Single VM (Scenario A):**
 
 ```bash
 cd compose
@@ -85,9 +78,9 @@ cd compose && ./install.sh --bundle ../shipgrid-onprem-images.tar.gz      # C1: 
 | Artifact | Purpose |
 |---|---|
 | Pull credentials for `registry.shipgrid.app` | authenticated vendor registry with release-ready images (or an image bundle for air-gap) |
-| `license.signed.json` + Ed25519 public key | offline-verified license — no activation servers, works air-gapped |
+| `license.signed.json` + Ed25519 public key | offline-verified license — **every** backend service verifies it at startup (fail-closed), no activation servers |
 | Release tag set | the tested image versions, pinned as defaults in this kit |
-| *ShipGrid On-Prem Installation Guide* | the full RU guide this kit follows: scenarios, hardware sizing, LLM options |
+| *ShipGrid On-Prem Installation Guide* | scenarios, hardware sizing, LLM options |
 
 ## Hardware at a glance
 
@@ -99,8 +92,7 @@ cd compose && ./install.sh --bundle ../shipgrid-onprem-images.tar.gz      # C1: 
 | Kubernetes, with headroom | 48+ | 128 GB | 500 GB+ |
 
 GPU is needed **only** for a self-hosted LLM (full air-gap without a cloud RF
-LLM): 1× A100/H100-class 80 GB for a 14–32B model. The component-by-component
-calculation is in Part 2 of the installation guide.
+LLM): 1× A100/H100-class 80 GB for a 14–32B model.
 
 ## LLM options
 
@@ -112,9 +104,19 @@ calculation is in Part 2 of the installation guide.
 | **Self-hosted** | vLLM/Ollama/TGI on your GPU node — OpenAI-compatible endpoint inside the perimeter, zero egress |
 | Foreign (non-RU installs only) | OpenAI/Anthropic keys with `BLOCK_FOREIGN_LLM=false` |
 
-Wiring a self-hosted endpoint (single-model and hybrid setups) is covered in
-[docs/local-models.md](docs/local-models.md). Model selection, GPU sizing and an
-honest quality-gap discussion are in Part 7 of the installation guide.
+Self-hosted wiring: set the endpoint (`LOCAL_LLM_BASE_URL` in Compose /
+`llm.local.baseURL` in Helm) and route your model names to it via
+`model_aliases` in the gate config — see `config/gate/config.yaml` (Compose) or
+`configs/gate/config.yaml` (Helm).
+
+## Configuration model
+
+Every service boots from built-in defaults + the shared environment (secrets,
+site URLs, license). A per-service config file overrides specific fields
+(precedence: **file → env → default**). The kit ships a commented example
+config for **every** service — `compose/config/<service>/config.yaml` and
+`kubernetes/helm-chart/configs/<service>/config.yaml`; keep only the keys you
+change.
 
 ## Before production
 

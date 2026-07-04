@@ -3,7 +3,7 @@
 
 global:
   # Image registry that ships the ShipGrid service images.
-  #  • Default = the vendor release registry (Harbor). Pull requires a per-client,
+  #  • Default = the vendor release registry. Pull requires a per-client,
   #    pull-only robot credential — create it as an imagePullSecret (see README).
   #  • Air-gap / policy: mirror the images into your own registry and point this
   #    at it, e.g. registry: harbor.internal.example.ru/shipgrid
@@ -15,19 +15,19 @@ global:
   # then list it here:  imagePullSecrets: [ { name: regcred } ]
   imagePullSecrets: []
   # Shared HMAC secret for internal service-to-service auth. CHANGE for production.
-  internalAuthSecret: "4b520439d21044cdf016af60c042ee34924630e58ec0ee831d1b15879c852396"
+  internalAuthSecret: "15b551bc939a7f55f83bfc14d419afa2a84ec72af0011ae717558662a0405fed"
 
 # ── Shared secrets ────────────────────────────────────────────────────────────
 # Injected into EVERY backend pod via `envFrom` (Secret shipgrid-secrets). Each
 # service's config resolves these env vars when the matching field is absent
-# from its (minimal/empty) ConfigMap — so secrets live here, not in ConfigMaps.
+# from its config file — so secrets live here, not in ConfigMaps.
 # Defaults are shared dev values — OVERRIDE for production (own values file /
 # --set / SealedSecrets / External Secrets). See "Production hardening" in README.
 secrets:
   jwtSecret: "local-dev-jwt-secret-please-change-0123456789"
   encryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
-  redisPassword: "devflowredis"
-  neo4jPassword: "devflowneo4j"
+  redisPassword: "shipgridredis"
+  neo4jPassword: "shipgridneo4j"
   qdrantApiKey: ""
   # gate is the one service that consumes a full Redis URL (others compose
   # REDIS_ADDR + REDIS_PASSWORD themselves). Left empty, the chart derives it
@@ -36,9 +36,9 @@ secrets:
   # this if gate's Redis is NOT the bare in-namespace `redis` (e.g. an
   # external managed Redis at a different host/port).
   redisURL: ""
-  # Per-service DATABASE_URL is taken from each service's default (bundled
-  # postgres). For managed/external DBs, override per service via
-  # services.<name>.env.DATABASE_URL (different DB name per service).
+  # Per-service DATABASE_URL is generated from `services.<name>.db` +
+  # `infra.postgres.auth` (bundled postgres). For managed/external DBs,
+  # override per service via services.<name>.env.DATABASE_URL.
 
 # ── Site URLs ─────────────────────────────────────────────────────────────────
 # Non-secret, install-specific. Injected into every pod via ConfigMap
@@ -50,7 +50,7 @@ site:
   spBaseURL: ""      # SP_BASE_URL     — SAML SP base (usually = publicAppURL)
 
 # ── First admin bootstrap ───────────────────────────────────────────────────────
-# Set adminBootstrap.email to the client's first admin-console email.
+# Set adminBootstrap.email to the first admin-console email.
 #
 # Two modes:
 #  • email only  → admin-auth creates that admin on startup with a RANDOM temp
@@ -58,7 +58,7 @@ site:
 #    login. Recoverable only from that first log line.
 #  • email + password → a post-install/upgrade hook Job (templates/admin-seed.yaml)
 #    seeds/resets the admin to THIS password deterministically (bcrypt via
-#    pgcrypto), so the client sets the first admin fully from values/env — no log
+#    pgcrypto), so the first admin is set fully from values/env — no log
 #    scraping. Idempotent: re-running upserts the same admin. Rotate after login.
 #
 # The password is install-specific: put it in your secret values file / --set /
@@ -68,13 +68,13 @@ adminBootstrap:
   password: ""         # set → hook Job seeds this exact password; empty → random-temp mode
   forcePasswordChange: false   # true → admin must change the seeded password on first login
   # DB the seed Job connects to. Defaults match the bundled postgres; point at
-  # your managed admin-auth DB (devflow_admin_auth) when infra.postgres.enabled=false.
+  # your managed admin-auth database when infra.postgres.enabled=false.
   db:
     host: postgres
     port: 5432
-    name: devflow_admin_auth
-    user: devflow
-    password: devflow   # = infra.postgres.auth.password; override for managed DB
+    name: shipgrid_admin_auth
+    user: shipgrid
+    password: shipgrid   # = infra.postgres.auth.password; override for managed DB
 
 # Defaults applied to every service (per-service blocks override via
 # services.<name>.{resources,probes,nodeSelector,tolerations,affinity}).
@@ -83,21 +83,18 @@ defaults:
   replicas: 1
   configMountPath: /app/config
   imagePullPolicy: IfNotPresent
-  # DB migrations run on startup (each service self-migrates).
-  env:
-    DEVFLOW_DB_MIGRATIONS_MODE: "startup"
-  # Baseline sized off the vendor sizing guide (26 Go services: 5.5GB RAM min /
-  # 11GB rec, 8–12 vCPU peak — see docs.shipgrid.app). requests * 26 ≈ the min
-  # bucket, limits * 26 ≈ the rec bucket, leaving headroom for infra deps on a
-  # 16 vCPU / 32 GB PoC node and 16–24 vCPU / 64 GB production profile.
-  # Heavier services (indexing, ai-analysis, security) override per-service.
+  # Extra env for every backend pod (name: value).
+  env: {}
+  # Baseline per-service budget sized for the standard 26-service footprint on
+  # a 16 vCPU / 32 GB PoC node or the 16–24 vCPU / 64 GB production profile.
+  # Heavier services (e.g. security) override per-service below.
   resources:
     requests: { cpu: 100m, memory: 192Mi }
     limits:   { cpu: 500m, memory: 512Mi }
   # Every service ships /healthz (liveness) + /readyz (dependency-aware
-  # readiness) except gate (llm-gateway uses /health + /readiness — overridden
-  # on its service block below). Generous thresholds tolerate slow starts
-  # (self-migration on boot) without false-restarting a healthy pod.
+  # readiness) except gate (/health + /readiness — overridden on its service
+  # block below). Generous thresholds tolerate slow starts (self-migration on
+  # boot) without false-restarting a healthy pod.
   probes:
     liveness:  { path: /healthz, initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 }
     readiness: { path: /readyz,  initialDelaySeconds: 5,  periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
@@ -124,7 +121,7 @@ llm:
     scope: "GIGACHAT_API_PERS"
     caFile: ""   # path to mounted Russian Trusted Root CA
   # Foreign providers — used only when blockForeignProviders=false (non-RU
-  # deployments). The gate is a standard (non `-tags ru`) build for these.
+  # deployments).
   openai:
     apiKey: ""
     baseURL: ""   # blank → api.openai.com; set for Azure/OpenAI-compatible
@@ -132,11 +129,9 @@ llm:
     apiKey: ""
     baseURL: ""
   # Self-hosted OpenAI-compatible model (vLLM/Ollama/TGI) — runs inside your
-  # perimeter regardless of blockForeignProviders. Setting baseURL here is not
-  # enough on its own: also add "local" to configs/gate/config.yaml's
-  # llm_policy.allowed_providers (a custom provider name needs an explicit
-  # opt-in — the chart can't infer that base_url points inside your network).
-  # See docs/local-models.md.
+  # perimeter regardless of blockForeignProviders. Set baseURL to the endpoint
+  # and add model→provider routes under model_aliases in configs/gate/config.yaml
+  # so requests for your model names reach it.
   local:
     apiKey: ""
     baseURL: ""
@@ -165,7 +160,7 @@ llm:
 # Blank model + dim 3072 = cloud default: services embed via the gate using
 # text-embedding-3-large (3072-dim). For fully in-perimeter embeddings, point at
 # a self-hosted embedding model served by your in-cluster inference server and
-# routed by the gate (add `<model>: local` under model_aliases in
+# routed by the gate (add `<model>: localembed` under model_aliases in
 # configs/gate/config.yaml). dim MUST equal the model's output size, and applies
 # stack-wide (indexing + every service that reads Qdrant) — changing it recreates
 # tenant collections, so re-index afterwards.
@@ -175,6 +170,8 @@ embedding:
   dim: 3072     # EMBEDDING_DIM — 3072 (OpenAI large) | 768 (nomic) | 1024 (bge/mxbai)
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────
+# EVERY backend service verifies the signed license at startup (fail-closed);
+# billing /readyz additionally exposes the license status.
 license:
   enabled: true
   publicKeyHex: ""
@@ -190,7 +187,7 @@ networkPolicy:
 
 # ── Optional pentest infrastructure (DAST + blind/OOB) ─────────────────────────
 # The pentest ENGINE itself ships inside the `security` service. These two
-# OPTIONAL helpers add live-target testing, matching what the SaaS runs:
+# OPTIONAL helpers add live-target testing:
 #  • zap — OWASP ZAP daemon for DAST (active web scan). Self-contained; when
 #    enabled the security service auto-discovers it at http://zap:8080, no extra
 #    wiring. Safe for an isolated contour.
@@ -245,8 +242,8 @@ ingress:
     secretName: shipgrid-tls
 
 # ── SPA frontends ─────────────────────────────────────────────────────────────
-# CI publishes :onprem-<tag> images (same-origin API base) — host-agnostic behind
-# the gateway. Enable with --set frontends.enabled=true. image = {global.registry}
+# :onprem-<tag> images (same-origin API base) — host-agnostic behind the
+# gateway. Enable with --set frontends.enabled=true. image = {global.registry}
 # /{repo}:{tag} unless `image` is set explicitly.
 frontends:
   enabled: false
@@ -256,82 +253,75 @@ frontends:
     frontend-landing: { repo: frontend-landing, tag: "onprem-v1.51.0",  port: 80 }
 
 # ── Backend services ──────────────────────────────────────────────────────────
-# image defaults to {global.registry}/{image}:{tag}. gate uses the llm-gateway image.
+# image defaults to {global.registry}/{image}:{tag}; tags are the tested
+# release set. gate uses the llm-gateway image.
+#
+# `db: <name>` marks a service that owns a logical database: the chart injects
+# DATABASE_URL=postgres://<infra.postgres.auth>@postgres:5432/<name> for it
+# (matching the bundled postgres, which creates every listed database on first
+# init). For a managed Postgres override services.<name>.env.DATABASE_URL —
+# an explicit env: entry always wins over the generated one.
 #
 # `config: true` mounts a ConfigMap from configs/<name>/config.yaml. With the
-# flexible loader (shared/config: file → env → default), services boot purely
-# from in-cluster defaults + the shared secrets/site env, so only `gate` still
-# needs a ConfigMap (its `providers:` block declares which LLM providers exist).
-# To override an in-cluster default for a service, add a configs/<name>/config.yaml
-# with ONLY the changed keys and flip its `config: true`.
+# config loader (file → env → default), services boot from in-cluster defaults
+# + the shared secrets/site env, so only `gate`, `security` and the security
+# split-workers mount one by default. configs/<name>/config.yaml files exist
+# for every service as commented examples — to override a default, uncomment
+# only the changed keys and flip that service's `config: true`.
 services:
-  # Release tags WITH the shared/license.Gate (cut 2026-06-23, one patch above
-  # the then-current prod). CI builds these gated images; on-prem enforces the
-  # license (prod runs them too but the gate is inert there — no LICENSE_ENABLED).
-  auth:              { image: auth,              tag: v1.41.0,   config: false }
-  admin-auth:        { image: admin-auth,        tag: v1.22.0,   config: false }
-  # platform reaches the connector over gRPC (repo listing / integration checks).
-  # The connector serves gRPC on :9090 (HTTP health on :8000) — exposed via
-  # connector.extraPorts below. No env override needed: connector:9090 is
-  # already platform's code default.
-  platform:          { image: platform,          tag: v1.57.0,   config: false }
-  billing:           { image: billing,           tag: v1.41.0,   config: false, license: true }
+  auth:              { image: auth,              tag: v1.41.0,   config: false, db: shipgrid_auth }
+  admin-auth:        { image: admin-auth,        tag: v1.22.0,   config: false, db: shipgrid_admin_auth }
+  # platform reaches the connector over gRPC (repo listing / integration
+  # checks); connector:9090 is already platform's code default (see
+  # connector.extraPorts below).
+  platform:          { image: platform,          tag: v1.57.0,   config: false, db: shipgrid_platform }
+  billing:           { image: billing,           tag: v1.41.0,   config: false, db: shipgrid_billing, license: true }
   # gate is the one service off the /healthz+/readyz convention (/health +
   # /readiness instead).
   gate:
     image: llm-gateway
     tag: v1.25.0
     config: true
+    db: shipgrid_gate
     probes:
       liveness:  { path: /health }
       readiness: { path: /readiness }
   connector:         { image: connector,         tag: v1.23.0,   config: false, extraPorts: [ { name: grpc, port: 9090 } ] }
   # replicas: 2 — each pod runs one repo pipeline worker (claims per-repo jobs via
   # FOR UPDATE SKIP LOCKED), so >1 replica indexes repositories in parallel.
-  # v1.64.0+ defaults services.platform_url to http://platform:8000 (matches
-  # every other service) — no env override needed.
-  indexing:          { image: indexing,          tag: v1.65.0,   config: false, replicas: 2 }
-  # The six extracted security-platform microservice URLs (policy-engine
-  # FR-024, proof-engine FR-034/035, cloud-scanner FR-009, k8s-scanner FR-011,
-  # runtime-collector FR-013, findings-correlator FR-038) are set via
+  indexing:          { image: indexing,          tag: v1.65.0,   config: false, db: shipgrid_indexing, replicas: 2 }
+  # The six extracted security-platform microservice URLs are wired via
   # configs/security/config.yaml, not env — see that file. Unset (delete a
   # line there) = embedded path for that domain.
   # Heavier than the default budget: the security service shells out to bundled
   # scanners (semgrep, checkov, trivy, gitleaks, …) that use ~1–2Gi during real
-  # repo scans, so the default 512Mi limit is too tight. Note also that /readyz
-  # runs a live scan for each tool; the Python scanners (semgrep ~6s, checkov
-  # ~4s) can overrun the service's internal per-scanner probe timeout on
-  # CPU-constrained nodes and get SIGKILLed ("signal: killed"), which shows as
-  # a degraded /readyz even though the tools scan fine. On small-CPU clusters
-  # gate k8s readiness on /healthz instead (see services.security.probes in your
-  # install overlay) — /readyz stays available for scanner monitoring.
+  # repo scans. Note: /readyz runs a live scan per tool; on CPU-constrained
+  # nodes the Python scanners can overrun the internal per-scanner timeout and
+  # show a degraded /readyz even though the tools scan fine — gate k8s
+  # readiness on /healthz there (services.security.probes in your overlay).
   security:
     image: security
     tag: v1.125.0
     config: true
+    db: shipgrid_security
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
-  ai-analysis:       { image: ai-analysis,       tag: v1.249.0,  config: false }
-  ai-settings:       { image: ai-settings,       tag: v0.7.0,    config: false }
-  review-processor:  { image: review-processor,  tag: v1.54.0,   config: false }
-  webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false }
+  ai-analysis:       { image: ai-analysis,       tag: v1.249.0,  config: false, db: shipgrid_ai_analysis }
+  ai-settings:       { image: ai-settings,       tag: v0.7.0,    config: false, db: shipgrid_ai_settings }
+  review-processor:  { image: review-processor,  tag: v1.54.0,   config: false, db: shipgrid_review_processor }
+  webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false, db: shipgrid_webhook_ingestor }
   notification:      { image: notification,      tag: v1.11.0,    config: false }
-  task-tracker:      { image: task-tracker,      tag: v1.50.0,   config: false }
-  qa-hub:            { image: qa-hub,             tag: v2.43.0,   config: false }
-  dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false }
-  delivery-ops:      { image: delivery-ops,      tag: v1.42.0,   config: false }
+  task-tracker:      { image: task-tracker,      tag: v1.50.0,   config: false, db: shipgrid_task_tracker }
+  qa-hub:            { image: qa-hub,             tag: v2.43.0,   config: false, db: shipgrid_qa_hub }
+  dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false, db: shipgrid_dev_jobs }
+  delivery-ops:      { image: delivery-ops,      tag: v1.42.0,   config: false, db: shipgrid_delivery_ops }
   realtime-gateway:  { image: realtime-gateway,  tag: v1.1.4,    config: false }
   automation-runner: { image: automation-runner, tag: v1.3.3,    config: false }
-  # Security split-workers (env-driven, no config.yaml). Each needs an explicit
-  # DATABASE_URL (no in-binary default) and owns its own database. The bundled
-  # These extracted security-platform services now use the flexible config
-  # loader like every other service: `config: true` mounts configs/<name>/
-  # config.yaml at CONFIG_PATH, which carries the DB DSN (postgres.dsn) and
-  # server.http_port=8000. So the DB credentials come from the ConfigMap, not a
-  # pod env var, and the port matches the Service (was :8080 by default).
-  # INTERNAL_AUTH_SECRET is still injected as a secret-env by the chart.
-  # Image tags v0.5.0/v0.6.0 also self-migrate their schema at startup.
+  # Security split-workers. Each owns its own database and self-migrates at
+  # startup; `config: true` mounts configs/<name>/config.yaml at CONFIG_PATH,
+  # which carries the DB DSN (postgres.dsn) and server.http_port=8000.
+  # INTERNAL_AUTH_SECRET is injected as a secret-env by the chart.
   policy-engine:       { image: policy-engine,       tag: v0.6.0, config: true }
   runtime-collector:   { image: runtime-collector,   tag: v0.5.0, config: true }
   k8s-scanner:         { image: k8s-scanner,         tag: v0.5.0, config: true }
@@ -340,55 +330,51 @@ services:
   findings-correlator: { image: findings-correlator, tag: v0.5.0, config: true }
 
 # ── Bundled infra (PoC only). For production use managed services / operators
-# and point service configs at their URLs. Heavy stateful deps (kafka, clickhouse,
-# neo4j, qdrant) are intentionally NOT bundled — bring your own. ────────────────
+# and point service configs at their URLs. ────────────────────────────────────
 infra:
   postgres:
     enabled: false
     image: pgvector/pgvector:pg16
     storage: 20Gi
     storageClassName: ""   # "" → cluster default StorageClass
-    # The user/password and the database names below MUST match the service
-    # images' built-in connection defaults (postgres://devflow:devflow@postgres:
-    # 5432/devflow_<service>) — that is why they carry the `devflow` prefix.
-    # Change them only by overriding each service's DATABASE_URL to match. For a
-    # production install, point services at your managed DB instead of bundling.
-    auth: { user: devflow, password: devflow }
+    # Internal-only bundled Postgres (not exposed outside the namespace). The
+    # user/password feed the generated per-service DATABASE_URL (services.<name>.db)
+    # and the split-worker config DSNs — keep them in sync if you change them.
+    # For production, point services at your managed DB instead of bundling.
+    auth: { user: shipgrid, password: shipgrid }
     # Per-service databases created on first init (each service self-migrates its
-    # schema). The service user (auth.user) owns them.
+    # schema). Must cover every services.<name>.db plus the split-worker DSNs.
     databases:
-      - devflow_admin_auth
-      - devflow_ai_analysis
-      - devflow_ai_settings
-      - devflow_auth
-      - devflow_billing
-      - devflow_delivery_ops
-      - devflow_dev_jobs
-      - devflow_gate
-      - devflow_indexing
-      - devflow_platform
-      - devflow_qa_hub
-      - devflow_review_processor
-      - devflow_security
-      - devflow_task_tracker
-      - devflow_webhook_ingestor
+      - shipgrid_admin_auth
+      - shipgrid_ai_analysis
+      - shipgrid_ai_settings
+      - shipgrid_auth
+      - shipgrid_billing
+      - shipgrid_delivery_ops
+      - shipgrid_dev_jobs
+      - shipgrid_gate
+      - shipgrid_indexing
+      - shipgrid_platform
+      - shipgrid_qa_hub
+      - shipgrid_review_processor
+      - shipgrid_security
+      - shipgrid_task_tracker
+      - shipgrid_webhook_ingestor
       # security split-workers (each owns its own DB)
-      - devflow_cloud_scanner
-      - devflow_policy_engine
-      - devflow_proof_engine
-      - devflow_runtime_collector
-      - devflow_k8s_scanner
-      - devflow_findings_correlator
+      - shipgrid_cloud_scanner
+      - shipgrid_policy_engine
+      - shipgrid_proof_engine
+      - shipgrid_runtime_collector
+      - shipgrid_k8s_scanner
+      - shipgrid_findings_correlator
   redis:
     enabled: false
     image: redis:7-alpine
   kafka:
     enabled: false
-    # Official Apache image, KRaft mode. Replaces the deprecated Bitnami image:
-    # Bitnami moved its free images to bitnamilegacy/* in 2025 and bitnamilegacy/
-    # kafka:3.7 is unmaintained. The official image is configured with KAFKA_-
-    # prefixed env (NOT bitnami's KAFKA_CFG_*) and stores data in /var/lib/kafka/
-    # data — the StatefulSet in templates/infra.yaml is written for that contract.
+    # Official Apache image, KRaft mode, configured with KAFKA_-prefixed env;
+    # data lives in /var/lib/kafka/data — the StatefulSet in templates/infra.yaml
+    # is written for that contract.
     image: apache/kafka:4.3.1
     storage: 10Gi
     storageClassName: ""
@@ -399,9 +385,8 @@ infra:
     storageClassName: ""
   qdrant:
     enabled: false
-    # Must match the go-client (shared/qdrant uses qdrant/go-client v1.17.x).
-    # On v1.12.x the newer client's dense-vector wire format is read as empty
-    # ("expected dim: N, got 0" on upsert), so indexing can't store embeddings.
+    # Must stay in step with the services' qdrant client (v1.17.x) — older
+    # servers read the dense-vector wire format as empty.
     image: qdrant/qdrant:v1.17.1
     storage: 10Gi
     storageClassName: ""
@@ -412,7 +397,7 @@ infra:
     image: clickhouse/clickhouse-server:24.8
     # The 24.x image rejects the default user with an empty password over TCP, so
     # the `default` user gets this password (dev default — rotate for prod).
-    password: "devflowclickhouse"
+    password: "shipgridclickhouse"
     storage: 10Gi
     storageClassName: ""
   kroki:

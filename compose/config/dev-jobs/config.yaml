@@ -1,0 +1,13 @@
+# dev-jobs — EXAMPLE config override (not mounted by default).
+# The service boots from its built-in defaults + the shared environment in
+# docker-compose.yml; a config file is only needed to override specific fields
+# (config loader precedence: file → env → default). To enable, mount this
+# directory into the container and set CONFIG_PATH, like the gate/security
+# services do in docker-compose.yml:
+#   volumes: [ ./config/dev-jobs:/app/config:ro ]
+#   environment: { CONFIG_PATH: /app/config/config.yaml }
+# Keep ONLY the keys you change — everything omitted keeps its default.
+#server:
+#  http_port: 8000
+#postgres:
+#  dsn: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_dev_jobs?sslmode=disable

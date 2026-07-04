@@ -1,8 +1,7 @@
 # Scenario B · Kubernetes (Helm)
 
 ShipGrid in your production cluster via the umbrella Helm chart — for
-enterprise installs with HA and scaling. Follows Part 5 of the *ShipGrid
-On-Prem Installation Guide*.
+enterprise installs with HA and scaling.
 
 The chart lives in [`helm-chart/`](helm-chart/) (self-contained, with its own
 [full reference README](helm-chart/README.md)) and is also published as an OCI
@@ -10,7 +9,7 @@ artifact — both install paths are equivalent:
 
 ```bash
 cd helm-chart && helm install shipgrid . -n shipgrid --create-namespace …   # from this kit
-helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.0 …   # from the registry
+helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.4 …   # from the registry
 ```
 
 ## Pre-flight
@@ -85,20 +84,24 @@ nginx cannot resolve backends.
 - Rotate the shared secrets: `../scripts/rotate-secrets.sh` prints a ready
   `values-secrets.yaml` block — keep it out of git, pass with `-f`.
 - Use managed databases; point services at them via
-  `services.<name>.env.DATABASE_URL`, keep `infra.*.enabled=false`.
+  `services.<name>.env.DATABASE_URL` (or the split-workers'
+  `configs/<name>/config.yaml` DSN), keep `infra.*.enabled=false`.
 - `networkPolicy.enabled=true` with `allowedEgressCIDRs` restricted to your
   LLM endpoint / registry / databases.
 
-The complete values reference, hardening checklist and vendor publishing flow
-are in [`helm-chart/README.md`](helm-chart/README.md).
+The complete values reference and hardening checklist are in
+[`helm-chart/README.md`](helm-chart/README.md).
 
 ## Acceptance
 
 ```bash
 kubectl -n shipgrid get pods -l app.kubernetes.io/part-of=shipgrid
-kubectl -n shipgrid exec deploy/billing -- wget -qO- localhost:8000/readyz   # license=ok
+kubectl -n shipgrid exec deploy/billing -- wget -qO- localhost:8000/readyz   # license status
 helm -n shipgrid status shipgrid
 ```
+
+The license is enforced by **every** backend service at startup (fail-closed);
+billing `/readyz` is where its status is exposed.
 
 ## Operate
 

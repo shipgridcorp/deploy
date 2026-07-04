@@ -1,8 +1,7 @@
 # Scenario C · Air-gapped
 
-Deployment into a fully isolated perimeter (banks, government, critical
-infrastructure): no internet, artifacts enter only through your approved
-transfer channel. Follows Part 6 of the *ShipGrid On-Prem Installation Guide*.
+Deployment into a fully isolated perimeter: no internet, artifacts enter only
+through your approved transfer channel.
 
 Air-gap is not a third deployment technology — it is Scenario
 [A (Compose)](../compose/) or [B (Kubernetes)](../kubernetes/) fed from a
@@ -36,7 +35,7 @@ cd ../compose
 ./install.sh --bundle /path/to/shipgrid-onprem-images.tar.gz
 # .env: LOCAL_LLM_BASE_URL=http://<vllm-host>:<port>/v1
 #       LICENSE_PUBLIC_KEY=<hex>   (license.signed.json → ./license.json)
-# + add "local" to llm_policy.allowed_providers, config/gate/config.yaml
+# + route your model names via model_aliases in config/gate/config.yaml
 ```
 
 ## C2 — Kubernetes
@@ -50,8 +49,7 @@ chart exactly as in [Scenario B](../kubernetes/) with three air-gap overrides:
 
 - `--set global.registry=harbor.internal/shipgrid` — images only from inside;
 - LLM = a Service in the namespace: `--set llm.local.baseURL=http://vllm:8000/v1`
-  + add `local` to the gate config's `llm_policy.allowed_providers`
-  (a custom provider name needs an explicit opt-in — see [docs/local-models.md](../docs/local-models.md));
+  + route your model names via `model_aliases` in `configs/gate/config.yaml`;
 - `--set networkPolicy.enabled=true` with **default-deny egress** — no outbound
   traffic at all.
 

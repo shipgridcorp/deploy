@@ -22,11 +22,11 @@ requires access to any private source-code repository.
 
 ### 1. Images — pulled from the vendor release registry
 
-Service images are served from the vendor Harbor registry
+Service images are served from the vendor registry
 **`registry.shipgrid.app/shipgrid`** (the chart's default `global.registry`).
-Only release-ready, license-gated tags are published there. This is an
-*authenticated vendor registry* (the `registry.redhat.io` model): you pull with a
-**per-client, pull-only, revocable robot credential** that we issue you.
+Only release-ready tags are published there. The registry is authenticated: you
+pull with a **per-client, pull-only, revocable robot credential** issued with
+your delivery.
 
 ```bash
 # create the pull secret from the robot credential you were issued
@@ -53,7 +53,7 @@ The chart is published as an OCI artifact in the same Harbor, so you install it
 by reference — you do **not** clone any private repository:
 
 ```bash
-helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.0 \
+helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.4 \
   -n shipgrid --create-namespace \
   -f values-onprem.yaml \
   --set global.imagePullSecrets[0].name=regcred \
@@ -64,21 +64,12 @@ helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.
 Inspect defaults without installing:
 
 ```bash
-helm show values oci://registry.shipgrid.app/charts/shipgrid --version 0.4.0
+helm show values oci://registry.shipgrid.app/charts/shipgrid --version 0.4.4
 ```
 
-> Alternatively, clone this chart repository and install from the local path
+> Alternatively, install from this kit's local path
 > (`helm install shipgrid . -n shipgrid …`). The chart is self-contained; the
 > example overrides live in [`values-onprem.yaml`](values-onprem.yaml).
-
-<details>
-<summary>Vendor: publishing a new chart version</summary>
-
-```bash
-helm package .                                   # → shipgrid-0.4.0.tgz
-helm push shipgrid-0.4.0.tgz oci://registry.shipgrid.app/charts
-```
-</details>
 
 ---
 
@@ -103,7 +94,7 @@ Sizing guidance is in the on-prem installation guides at
 ## Quick start (PoC, bundled infra)
 
 ```bash
-helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.0 \
+helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.4 \
   -n shipgrid --create-namespace \
   --set global.imagePullSecrets[0].name=regcred \
   --set infra.postgres.enabled=true --set infra.redis.enabled=true \
@@ -138,11 +129,12 @@ For a PoC, the chart can bring single-node versions of each:
 ```
 
 For production, point each service's `DATABASE_URL` at your managed endpoint
-via `services.<name>.env.DATABASE_URL` (it's the one field meant to be
-env-overridden — every service's Postgres config carries an `env:` tag) and
-keep `infra.*.enabled=false`. Peer-*service* URLs (e.g. wiring the security
+via `services.<name>.env.DATABASE_URL` (an explicit `env:` entry always wins
+over the URL the chart generates from `services.<name>.db`) and keep
+`infra.*.enabled=false`. Peer-*service* URLs (e.g. wiring the security
 split-workers) are set via `configs/<name>/config.yaml` + `config: true`
-instead — see `configs/security/config.yaml` for a worked example.
+instead — see `configs/security/config.yaml` for a worked example; a commented
+example config ships for **every** service under `configs/`.
 
 ---
 
@@ -153,7 +145,7 @@ instead — see `configs/security/config.yaml` for a worked example.
 | **Mock** (default) | `llm.mockEnabled=true` — no real LLM; stub answers, for validating the install |
 | **YandexGPT** | `--set llm.yandex.apiKey=… --set llm.yandex.folderId=… --set llm.mockEnabled=false` |
 | **GigaChat** | `--set llm.gigachat.authKey=…` `--set llm.gigachat.scope=…`, mount the Russian Trusted Root CA in `llm.gigachat.caFile` |
-| **Self-hosted** | run a vLLM/Ollama/TGI OpenAI-compatible endpoint in the namespace, `--set llm.local.baseURL=…` (+ `llm.local.apiKey` if it needs auth), and add `local` to the gate config's `llm_policy.allowed_providers` — see [docs/local-models.md](../../docs/local-models.md) |
+| **Self-hosted** | run a vLLM/Ollama/TGI OpenAI-compatible endpoint in the namespace, `--set llm.local.baseURL=…` (+ `llm.local.apiKey` if it needs auth), and route your model names via `model_aliases` in [`configs/gate/config.yaml`](configs/gate/config.yaml) |
 | **Foreign (non-RU only)** | `--set llm.blockForeignProviders=false --set llm.openai.apiKey=…` (or `llm.anthropic.*`) |
 
 `llm.blockForeignProviders=true` (default) blocks OpenAI/Anthropic stack-wide. A
@@ -187,7 +179,7 @@ The chart ships an edge `gateway` (nginx) that serves the SPA and proxies `/api`
 to the backend Services on one origin, plus Ingress + TLS templates.
 
 ```bash
-helm upgrade shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.0 -n shipgrid \
+helm upgrade shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.4 -n shipgrid \
   --set gateway.resolver=$(kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}') \
   --set frontends.enabled=true \
   --set ingress.enabled=true \
@@ -273,7 +265,7 @@ per-service `services.<name>.probes`.
 | `frontends.enabled` | `false` | deploy SPA images |
 | `infra.<dep>.enabled` | `false` | bundle a single-node PoC dependency |
 | `defaults.resources` / `defaults.probes` / `defaults.pdb.enabled` | see values.yaml | per-service overridable resource/probe/PDB baseline |
-| `services.<name>.{image,tag,config,replicas,resources,probes}` | — | per-service overrides. Peer-service URLs/feature-switches go through `configs/<name>/config.yaml` + `config: true`, not `env:` — see that directory. `env:` is reserved for genuinely install-specific secrets like `DATABASE_URL` (has an `env:` tag in every service's own config schema) |
+| `services.<name>.{image,tag,config,db,replicas,resources,probes}` | — | per-service overrides. `db` = the service's logical database (drives the generated `DATABASE_URL`). Peer-service URLs/feature-switches go through `configs/<name>/config.yaml` + `config: true`, not `env:` — see that directory. `env:` is reserved for genuinely install-specific values like a managed-DB `DATABASE_URL` |
 
 See [`values.yaml`](values.yaml) for the complete, commented set and
 [`values-onprem.yaml`](values-onprem.yaml) for an example production overlay.

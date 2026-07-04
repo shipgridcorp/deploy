@@ -74,8 +74,8 @@ Notes:
  • ENCRYPTION_KEY protects data encrypted at rest (integration credentials,
    tokens). Changing it on an existing install makes previously encrypted
    values unreadable — plan rotation before go-live, not after.
- • The bundled Postgres keeps user devflow/devflow: the per-service DSN
-   defaults are baked into the service images and Postgres is not reachable
-   from outside the deployment network. Point services at a managed database
-   (per-service DATABASE_URL) if your policy requires rotated DB credentials.
+ • The bundled Postgres keeps its fixed internal credentials: it is not
+   reachable from outside the deployment network and the per-service DSNs
+   reference it explicitly. Point services at a managed database (per-service
+   DATABASE_URL / config DSN) if your policy requires rotated DB credentials.
 EON

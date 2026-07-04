@@ -58,9 +58,9 @@ data:
 {{ $content | indent 4 }}
 {{- end }}
 {{- else }}
-    # PLACEHOLDER — supply {{ $name }} config.yaml (copy from your prod
-    # *-configmap or deploy/local/config/{{ $name }}). The service will not
-    # start with an empty config.
+    # PLACEHOLDER — configs/{{ $name }}/config.yaml is missing from the chart.
+    # Supply one (see the commented examples in configs/) or set
+    # services.{{ $name }}.config=false to boot from defaults + env.
     server:
       port: {{ $.Values.defaults.port }}
 {{- end }}

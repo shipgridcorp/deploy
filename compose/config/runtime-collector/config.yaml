@@ -9,4 +9,4 @@ server:
 # postgres. Override the DSN here (not via a pod env var) to point at an
 # external/managed postgres.
 postgres:
-  dsn: postgres://devflow:devflow@postgres:5432/devflow_runtime_collector?sslmode=disable
+  dsn: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_runtime_collector?sslmode=disable

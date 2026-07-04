@@ -5,10 +5,11 @@ at them (the defaults already resolve bare names: postgres, redis, kafka, neo4j,
 qdrant). Each dep is bare-named so the in-cluster default DSNs find it.
 */ -}}
 {{- if .Values.infra.postgres.enabled }}
-# ── Postgres init: create the per-service devflow_* databases ──────────────────
-# The services each own a separate database (default DSN .../devflow_<svc>); a
-# single bundled Postgres only creates POSTGRES_DB, so we seed the rest here.
-# Scripts in /docker-entrypoint-initdb.d run once, on an empty data dir.
+# ── Postgres init: create the per-service databases ───────────────────────────
+# The services each own a separate logical database (services.<name>.db / the
+# split-worker config DSNs); a single bundled Postgres only creates POSTGRES_DB,
+# so we seed the rest here. Scripts in /docker-entrypoint-initdb.d run once, on
+# an empty data dir.
 apiVersion: v1
 kind: ConfigMap
 metadata:
