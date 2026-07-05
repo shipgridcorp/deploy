@@ -71,10 +71,15 @@ services:
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_admin_auth?sslmode=disable
-      # First admin-console user: created on startup with a generated temporary
-      # password (printed ONCE in this container's log), forced password change
-      # on first login. Empty → no bootstrap.
+      # First admin-console user (idempotent). Password source, preferred → fallback:
+      #   BOOTSTRAP_ADMIN_PASSWORD_FILE — read from a mounted secret; never logged.
+      #   BOOTSTRAP_ADMIN_PASSWORD      — inline via env; never logged.
+      #   neither                       — one-time random password printed ONCE to
+      #                                   this container's log (rotate immediately).
+      # Empty email → no bootstrap.
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      BOOTSTRAP_ADMIN_PASSWORD_FILE: ${BOOTSTRAP_ADMIN_PASSWORD_FILE:-}
 
   platform:
     <<: *backend

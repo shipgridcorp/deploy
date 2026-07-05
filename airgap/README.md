@@ -10,21 +10,35 @@ that feed.
 
 ## What the air-gap delivery contains
 
+Standard for **every** air-gap delivery — a plain SHA-256 proves integrity but
+not origin, so the bundle is also signed and carries an SBOM:
+
 | Artifact | Purpose |
 |---|---|
-| `shipgrid-onprem-images.tar.gz` + `.sha256` | all platform service images |
+| `shipgrid-onprem-images.tar.gz` + `.sha256` | all platform service images (docker-save) |
+| `release-manifest.json` | image list with tags + **sha256 digests** + versions |
+| `SBOM/*.spdx.json` | per-image SBOM for security audit |
+| `SHA256SUMS` + `SHA256SUMS.sig` | checksums of every artifact + **cosign signature (origin proof)** |
+| Release notes + compatibility matrix | versions of every component, what changed |
 | Inference-server image (vLLM) + open-model weights | self-hosted LLM on your GPU node |
 | Scanner feeds: `trivy-db`, `nuclei-templates` | security scans work offline |
-| `license.signed.json` + public key | offline license validation — no activation servers |
+| `license.signed.json` | offline license validation — the public key is embedded in the images |
 | Russian Trusted Root CA | only if GigaChat is used inside the perimeter |
-| Security-review pack | architecture, SBOM, egress list, foreign-LLM block attestation |
 
-**Verify checksums twice** — at the DMZ side and after transfer into the
-perimeter, before loading anything:
+For banks / CII, additionally: cosign per-image signatures, an extended CVE
+report + VEX, image scan results, and a crypto format agreed in advance.
+
+**Verify the chain, twice** — at the DMZ side and after transfer into the
+perimeter, before loading anything. `verify-bundle.sh` runs origin →
+checksums → manifest top-down and fails closed:
 
 ```bash
-sha256sum -c shipgrid-onprem-images.tar.gz.sha256
+./verify-bundle.sh --cosign-key shipgrid-cosign.pub <bundle-dir>
+# after `docker load`, cross-check the loaded image digests:
+./verify-bundle.sh --check-loaded <bundle-dir>
 ```
+
+The vendor builds this bundle with `build-bundle.sh` (see its header).
 
 ## C1 — single server (Compose)
 
@@ -34,7 +48,7 @@ The bundle goes straight into the local Docker daemon; no registry needed:
 cd ../compose
 ./install.sh --bundle /path/to/shipgrid-onprem-images.tar.gz
 # .env: LOCAL_LLM_BASE_URL=http://<vllm-host>:<port>/v1
-#       LICENSE_PUBLIC_KEY=<hex>   (license.signed.json → ./license.json)
+#       license.signed.json → ./license.json   (public key is embedded in the images)
 # + route your model names via model_aliases in config/gate/config.yaml
 # After first login: assign the chat / chat-light / embeddings roles to your
 # models in the admin console (AI Settings → Providers) — AI features stay
