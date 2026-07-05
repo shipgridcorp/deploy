@@ -95,7 +95,7 @@ services:
   # credentials come from .env (expanded inside config/gate/config.yaml).
   gate:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/llm-gateway:${GATE_TAG:-v1.25.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/llm-gateway:${GATE_TAG:-v1.28.0}
     volumes:
       - ./config/gate:/app/config:ro
       - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro

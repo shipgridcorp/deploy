@@ -275,7 +275,7 @@ services:
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.27.0
+    tag: v1.28.0
     config: true
     db: shipgrid_gate
     probes:
