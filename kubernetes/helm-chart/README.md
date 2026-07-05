@@ -57,8 +57,8 @@ helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.
   -n shipgrid --create-namespace \
   -f values-onprem.yaml \
   --set global.imagePullSecrets[0].name=regcred \
-  --set-file license.file=license.signed.json \
-  --set license.publicKeyHex=<ed25519-pub-hex>
+  --set-file license.file=license.signed.json
+# the license public key is embedded in the images — no publicKeyHex needed
 ```
 
 Inspect defaults without installing:
@@ -101,7 +101,7 @@ helm install shipgrid oci://registry.shipgrid.app/charts/shipgrid --version 0.4.
   --set infra.kafka.enabled=true --set infra.neo4j.enabled=true \
   --set infra.qdrant.enabled=true --set infra.clickhouse.enabled=true \
   --set gateway.resolver=$(kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}') \
-  --set-file license.file=license.signed.json --set license.publicKeyHex=<hex>
+  --set-file license.file=license.signed.json
 ```
 
 This boots the whole stack with single-node bundled dependencies and `mock` LLM
@@ -173,15 +173,18 @@ before the switch).
 
 ## Licensing
 
-Every backend enforces a signed Ed25519 license at startup (`shared/license.Gate`,
-fail-closed). Provide it at install:
+Every backend enforces a signed Ed25519 license at startup (`shared/license.Gate`).
+The public key that verifies it is embedded in the images, so you only provide the
+signed license itself:
 
 ```bash
 --set license.enabled=true \
---set-file license.file=license.signed.json \
---set license.publicKeyHex=<ed25519-public-key-hex>
+--set-file license.file=license.signed.json
 ```
 
+A missing/invalid license fails closed (the pod won't start); a valid-but-expired
+license degrades to restricted (read-only) mode after its grace period rather than
+stopping — new AI/scan/config operations are blocked, sign-in/view/export stay up.
 The license caps seats and gates modules (`module.*`). Status is exposed on
 `billing /readyz` and `GET /internal/license`. Renew by replacing the license
 Secret/file — no online activation (works air-gapped); picked up within ~6h or on
@@ -271,11 +274,11 @@ per-service `services.<name>.probes`.
 | `global.imagePullSecrets` | `[]` | pull secret(s) for the registry |
 | `secrets.*` | dev defaults | shared JWT / encryption / Redis / Neo4j secrets — **rotate** |
 | `site.publicAppURL` / `adminAppURL` | `""` | public origins (deep links / SAML ACS) |
-| `adminBootstrap.email` | `""` | first admin-console user (temp password printed once) |
+| `adminBootstrap.email` / `.password` | `""` | first admin-console user; set `.password` (secret values) to seed it without logging — else a temp password is printed once |
 | `llm.blockForeignProviders` | `true` | block OpenAI/Anthropic (152-ФЗ) |
 | `llm.yandex.*` / `llm.gigachat.*` | `""` | RU LLM credentials |
 | `llm.mockEnabled` | `true` | run with no real LLM (PoC) |
-| `license.enabled` / `publicKeyHex` / `file` | `true` / `""` / `""` | Ed25519 license |
+| `license.enabled` / `file` | `true` / `""` | Ed25519 license (public key embedded in images; `publicKeyHex` is a dev-only override) |
 | `networkPolicy.enabled` | `false` | default-deny egress except DNS + allowlist |
 | `gateway.enabled` / `gateway.resolver` | `true` / CoreDNS IP | edge nginx (set resolver!) |
 | `ingress.enabled` / `ingress.app.host` / `ingress.tls.*` | `false` | external access + TLS |

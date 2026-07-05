@@ -85,7 +85,7 @@ step "Configuration (.env)"
 if [ ! -f .env ]; then
   cp .env.example .env
   c_grn "✓ Created .env from template (.env.example)"
-  c_ylw "  Edit .env: license (LICENSE_PUBLIC_KEY + license.json), LLM credentials, PUBLIC_APP_URL."
+  c_ylw "  Edit .env: place your license.signed.json, LLM credentials, PUBLIC_APP_URL."
   if [ "$ASSUME_YES" -eq 0 ]; then
     read -r -p "  Edit .env now, then press Enter to continue (or Ctrl-C to abort)... " _ || true
   fi
@@ -104,13 +104,12 @@ if [ "${LICENSE_ENABLED:-true}" = "true" ]; then
   step "License"
   if [ ! -f "$LIC_HOST" ]; then
     c_red "✗ License file not found at $LIC_HOST."
-    c_red "  Every backend service verifies the signed license at startup (fail-closed)"
-    c_red "  and will refuse to boot without it. Place the license.signed.json you"
-    c_red "  received as $LIC_HOST and set LICENSE_PUBLIC_KEY in .env,"
+    c_red "  Every backend service verifies the signed license at startup and will"
+    c_red "  refuse to boot without it (the public key is embedded in the images)."
+    c_red "  Place the license.signed.json you received as $LIC_HOST,"
     die   "  or set LICENSE_ENABLED=false in .env for an unlicensed trial."
   fi
   c_grn "✓ License file present"
-  [ -z "${LICENSE_PUBLIC_KEY:-}" ] && c_ylw "⚠ LICENSE_PUBLIC_KEY is empty — set it in .env so the signature can be verified."
 fi
 
 # ── 5. Start the stack ───────────────────────────────────────────────────────

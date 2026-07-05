@@ -59,8 +59,8 @@ cd kubernetes/helm-chart
 helm install shipgrid . -n shipgrid --create-namespace \
   -f values-onprem.yaml \
   --set global.imagePullSecrets[0].name=regcred \
-  --set-file license.file=license.signed.json \
-  --set license.publicKeyHex=<ed25519-pub-hex>
+  --set-file license.file=license.signed.json
+# the license public key is embedded in the images — no publicKeyHex needed
 ```
 
 **Air-gapped (Scenario C)** — verify the delivered bundle, then install with no
@@ -78,7 +78,7 @@ cd compose && ./install.sh --bundle ../shipgrid-onprem-images.tar.gz      # C1: 
 | Artifact | Purpose |
 |---|---|
 | Pull credentials for `registry.shipgrid.app` | authenticated vendor registry with release-ready images (or an image bundle for air-gap) |
-| `license.signed.json` + Ed25519 public key | offline-verified license — **every** backend service verifies it at startup (fail-closed), no activation servers |
+| `license.signed.json` | offline-verified license — **every** backend service verifies it at startup against the public key embedded in the images; no activation servers. Missing/invalid fails closed; expired degrades to restricted (read-only) mode |
 | Release tag set | the tested image versions, pinned as defaults in this kit |
 | *ShipGrid On-Prem Installation Guide* | scenarios, hardware sizing, LLM options |
 

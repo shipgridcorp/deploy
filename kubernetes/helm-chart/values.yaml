@@ -165,14 +165,18 @@ llm:
 # re-index repositories afterwards (the console warns before the switch).
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────
-# EVERY backend service verifies the signed license at startup (fail-closed);
-# billing /readyz additionally exposes the license status.
+# EVERY backend service verifies the signed license at startup against the public
+# key embedded in the image. A missing/invalid license fails closed; a valid-but-
+# expired one degrades to restricted (read-only) mode after grace, not a stop.
+# billing /readyz exposes the license status.
 license:
   enabled: true
-  publicKeyHex: ""
   # Provide the signed license at install:  --set-file license.file=license.signed.json
   file: ""
   mountPath: /etc/shipgrid/license.json
+  # Advanced: override the embedded trust-root public key. Only takes effect on
+  # unsigned/dev images (ignored when a key is baked in). Leave empty in prod.
+  publicKeyHex: ""
 
 # ── Egress lockdown ───────────────────────────────────────────────────────────
 networkPolicy:
@@ -264,27 +268,27 @@ frontends:
 # for every service as commented examples — to override a default, uncomment
 # only the changed keys and flip that service's `config: true`.
 services:
-  auth:              { image: auth,              tag: v1.41.0,   config: false, db: shipgrid_auth }
-  admin-auth:        { image: admin-auth,        tag: v1.22.0,   config: false, db: shipgrid_admin_auth }
+  auth:              { image: auth,              tag: v1.42.1,   config: false, db: shipgrid_auth }
+  admin-auth:        { image: admin-auth,        tag: v1.24.0,   config: false, db: shipgrid_admin_auth }
   # platform reaches the connector over gRPC (repo listing / integration
   # checks); connector:9090 is already platform's code default (see
   # connector.extraPorts below).
-  platform:          { image: platform,          tag: v1.57.0,   config: false, db: shipgrid_platform }
-  billing:           { image: billing,           tag: v1.41.0,   config: false, db: shipgrid_billing, license: true }
+  platform:          { image: platform,          tag: v1.58.1,   config: false, db: shipgrid_platform }
+  billing:           { image: billing,           tag: v1.43.0,   config: false, db: shipgrid_billing, license: true }
   # gate is the one service off the /healthz+/readyz convention (/health +
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.28.0
+    tag: v1.29.0
     config: true
     db: shipgrid_gate
     probes:
       liveness:  { path: /health }
       readiness: { path: /readiness }
-  connector:         { image: connector,         tag: v1.23.0,   config: false, extraPorts: [ { name: grpc, port: 9090 } ] }
+  connector:         { image: connector,         tag: v1.25.1,   config: false, extraPorts: [ { name: grpc, port: 9090 } ] }
   # replicas: 2 — each pod runs one repo pipeline worker (claims per-repo jobs via
   # FOR UPDATE SKIP LOCKED), so >1 replica indexes repositories in parallel.
-  indexing:          { image: indexing,          tag: v1.66.0,   config: false, db: shipgrid_indexing, replicas: 2 }
+  indexing:          { image: indexing,          tag: v1.66.1,   config: false, db: shipgrid_indexing, replicas: 2 }
   # The six extracted security-platform microservice URLs are wired via
   # configs/security/config.yaml, not env — see that file. Unset (delete a
   # line there) = embedded path for that domain.
@@ -296,33 +300,33 @@ services:
   # readiness on /healthz there (services.security.probes in your overlay).
   security:
     image: security
-    tag: v1.127.0
+    tag: v1.129.1
     config: true
     db: shipgrid_security
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
-  ai-analysis:       { image: ai-analysis,       tag: v1.252.0,  config: false, db: shipgrid_ai_analysis }
-  ai-settings:       { image: ai-settings,       tag: v0.9.0,    config: false, db: shipgrid_ai_settings }
-  review-processor:  { image: review-processor,  tag: v1.56.0,   config: false, db: shipgrid_review_processor }
-  webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false, db: shipgrid_webhook_ingestor }
-  notification:      { image: notification,      tag: v1.11.0,    config: false }
-  task-tracker:      { image: task-tracker,      tag: v1.53.0,   config: false, db: shipgrid_task_tracker }
-  qa-hub:            { image: qa-hub,             tag: v2.43.0,   config: false, db: shipgrid_qa_hub }
-  dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false, db: shipgrid_dev_jobs }
-  delivery-ops:      { image: delivery-ops,      tag: v1.45.0,   config: false, db: shipgrid_delivery_ops }
-  realtime-gateway:  { image: realtime-gateway,  tag: v1.1.4,    config: false }
-  automation-runner: { image: automation-runner, tag: v1.3.3,    config: false }
+  ai-analysis:       { image: ai-analysis,       tag: v1.252.1,  config: false, db: shipgrid_ai_analysis }
+  ai-settings:       { image: ai-settings,       tag: v0.10.1,    config: false, db: shipgrid_ai_settings }
+  review-processor:  { image: review-processor,  tag: v1.56.1,   config: false, db: shipgrid_review_processor }
+  webhook-ingestor:  { image: webhook-ingestor,  tag: v1.14.1,   config: false, db: shipgrid_webhook_ingestor }
+  notification:      { image: notification,      tag: v1.12.1,    config: false }
+  task-tracker:      { image: task-tracker,      tag: v1.53.1,   config: false, db: shipgrid_task_tracker }
+  qa-hub:            { image: qa-hub,             tag: v2.44.1,   config: false, db: shipgrid_qa_hub }
+  dev-jobs:          { image: dev-jobs,          tag: v0.35.1,   config: false, db: shipgrid_dev_jobs }
+  delivery-ops:      { image: delivery-ops,      tag: v1.45.1,   config: false, db: shipgrid_delivery_ops }
+  realtime-gateway:  { image: realtime-gateway,  tag: v1.3.0,    config: false }
+  automation-runner: { image: automation-runner, tag: v1.4.1,    config: false }
   # Security split-workers. Each owns its own database and self-migrates at
   # startup; `config: true` mounts configs/<name>/config.yaml at CONFIG_PATH,
   # which carries the DB DSN (postgres.dsn) and server.http_port=8000.
   # INTERNAL_AUTH_SECRET is injected as a secret-env by the chart.
-  policy-engine:       { image: policy-engine,       tag: v0.6.0, config: true }
-  runtime-collector:   { image: runtime-collector,   tag: v0.5.0, config: true }
-  k8s-scanner:         { image: k8s-scanner,         tag: v0.5.0, config: true }
-  cloud-scanner:       { image: cloud-scanner,       tag: v0.5.0, config: true }
-  proof-engine:        { image: proof-engine,        tag: v0.5.0, config: true }
-  findings-correlator: { image: findings-correlator, tag: v0.5.0, config: true }
+  policy-engine:       { image: policy-engine,       tag: v0.7.1, config: true }
+  runtime-collector:   { image: runtime-collector,   tag: v0.6.1, config: true }
+  k8s-scanner:         { image: k8s-scanner,         tag: v0.6.1, config: true }
+  cloud-scanner:       { image: cloud-scanner,       tag: v0.6.1, config: true }
+  proof-engine:        { image: proof-engine,        tag: v0.6.1, config: true }
+  findings-correlator: { image: findings-correlator, tag: v0.6.1, config: true }
 
 # ── Bundled infra (PoC only). For production use managed services / operators
 # and point service configs at their URLs. ────────────────────────────────────

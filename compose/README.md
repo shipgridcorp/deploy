@@ -32,8 +32,8 @@ and the signed license + public key.
 
 ```bash
 cp .env.example .env
-# edit .env: LICENSE_PUBLIC_KEY, LLM credentials, PUBLIC_APP_URL
-# place license.signed.json → ./license.json
+# edit .env: LLM credentials, PUBLIC_APP_URL
+# place license.signed.json → ./license.json  (the public key is embedded in the images)
 
 docker login registry.shipgrid.app   # credentials issued with the delivery
 ./install.sh                         # preflight → pull → up → smoke
@@ -150,8 +150,9 @@ docker compose down -v                  # ⚠ deletes the data too
 | Symptom | Cause / fix |
 |---|---|
 | `install.sh` fails preflight | no docker / compose v2, low RAM or disk — see the message |
-| services crash-loop at startup | license missing/invalid while `LICENSE_ENABLED=true` (every service enforces it) — check `./license.json` + `LICENSE_PUBLIC_KEY` |
+| services crash-loop at startup | license missing/invalid while `LICENSE_ENABLED=true` (every service enforces it) — check `./license.json`. An *expired* license does **not** crash-loop; it runs in restricted (read-only) mode |
 | gateway returns non-2xx | frontends still starting — `docker compose logs -f frontend` |
-| billing `/readyz` degraded | license missing or invalid — same check as above |
+| billing `/readyz` degraded | license missing/invalid (bad signature/format). An expired license stays ready in restricted mode — install a renewed `license.signed.json` |
+| new AI/scan/config blocked, but sign-in works | license expired beyond grace → restricted mode. Install a renewed `license.signed.json` to restore full operation |
 | AI answers empty / error | LLM credentials unset/invalid in `.env` — see **LLM modes** |
 | `ImagePull` errors | not logged in to the registry, or `REGISTRY` in `.env` doesn't match your mirror |

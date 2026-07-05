@@ -12,10 +12,12 @@ data:
   ADMIN_APP_URL: {{ .Values.site.adminAppURL | quote }}
   SP_BASE_URL: {{ .Values.site.spBaseURL | quote }}
   # On-prem license gate (shared/license.Gate runs in EVERY backend service at
-  # startup). When LICENSE_ENABLED=true, a service refuses to boot unless the
-  # mounted license.json verifies against LICENSE_PUBLIC_KEY (fail-closed).
+  # startup). When LICENSE_ENABLED=true, a service verifies the mounted
+  # license.json against the public key embedded in the image. Missing/invalid
+  # fails closed; expired degrades to restricted (read-only) mode after grace.
   LICENSE_ENABLED: {{ .Values.license.enabled | quote }}
   LICENSE_FILE: {{ .Values.license.mountPath | quote }}
+  # Dev-only override of the embedded key; empty in prod (then it is ignored).
   LICENSE_PUBLIC_KEY: {{ .Values.license.publicKeyHex | quote }}
   # Embeddings (repository indexing / RAG): the model is assigned only in the
   # admin console (AI Settings → Providers, role "embeddings"); services

@@ -4,6 +4,25 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.9 — 2026-07-06
+
+### Changed
+- **License trust root is now embedded in the images.** `license.publicKeyHex`
+  is no longer required at install — the public key is baked into the service
+  binaries. The value remains as a dev-only override (ignored when a key is
+  embedded). Install with just `--set-file license.file=license.signed.json`.
+- **Expiry no longer stops the platform.** A valid-but-expired license degrades
+  to **restricted (read-only) mode** after its grace period: sign-in, viewing,
+  export and installing a renewed license stay available; new AI/scan/automation/
+  config operations are blocked. Only a missing/invalid license fails closed.
+  billing `/readyz` stays *ready* on expiry (reports `restricted: true`) so the
+  pod is not pulled from the Service endpoints.
+- Bumped all pinned service image tags to the release carrying the above.
+
+### Added
+- **`adminBootstrap.password` seeds the first admin without logging it** (already
+  present; documented). On Compose, `BOOTSTRAP_ADMIN_PASSWORD_FILE` does the same.
+
 ## 0.4.4 — 2026-07-04
 
 ### Added

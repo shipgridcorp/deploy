@@ -59,9 +59,9 @@ helm install shipgrid . -n shipgrid \
   --set global.registry=harbor.company.ru/shipgrid \
   --set global.imagePullSecrets[0].name=regcred \
   --set-file license.file=license.signed.json \
-  --set license.publicKeyHex=<ed25519-pub-hex> \
   --set llm.yandex.apiKey=<key> --set llm.yandex.folderId=<folder> \
   --set networkPolicy.enabled=true
+# the license public key is embedded in the images — no publicKeyHex needed
 ```
 
 **5 · External access** — gateway + Ingress + TLS + SPA frontends:
@@ -100,8 +100,10 @@ kubectl -n shipgrid exec deploy/billing -- wget -qO- localhost:8000/readyz   # l
 helm -n shipgrid status shipgrid
 ```
 
-The license is enforced by **every** backend service at startup (fail-closed);
-billing `/readyz` is where its status is exposed.
+The license is enforced by **every** backend service at startup — the public key
+is embedded in the images. A missing/invalid license fails closed; a valid-but-
+expired one degrades to restricted (read-only) mode after grace rather than
+stopping. billing `/readyz` is where its status is exposed.
 
 ## Operate
 
@@ -117,6 +119,6 @@ billing `/readyz` is where its status is exposed.
 |---|---|
 | `ImagePullBackOff` | image not mirrored / wrong `regcred` / wrong `global.registry` |
 | service can't find a peer | a data dependency isn't bare-named in the namespace |
-| billing `/readyz` degraded | license missing/invalid or `publicKeyHex` unset |
+| billing `/readyz` degraded | license missing/invalid (bad signature/format). An expired license stays ready in restricted mode — install a renewed `license.signed.json` |
 | service `CrashLoop` | config points at an unreachable DB — check the DSN |
 | two releases conflict | bare names → strictly one release per namespace |

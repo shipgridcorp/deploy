@@ -33,7 +33,8 @@ llm:
 
 license:
   enabled: true
-  publicKeyHex: "REPLACE-with-ed25519-public-key-hex"
+  # The public key is embedded in the images — nothing to set here. Provide the
+  # signed license at install: --set-file license.file=license.signed.json
 
 networkPolicy:
   enabled: true
