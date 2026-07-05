@@ -244,7 +244,7 @@ frontends:
   enabled: false
   items:
     frontend:         { repo: frontend,         tag: "onprem-v1.527.0", port: 80 }  # client dashboard
-    admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.54.0",  port: 80 }
+    admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.58.0",  port: 80 }
     frontend-landing: { repo: frontend-landing, tag: "onprem-v1.51.0",  port: 80 }
 
 # ── Backend services ──────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ services:
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.25.0
+    tag: v1.27.0
     config: true
     db: shipgrid_gate
     probes:
@@ -284,7 +284,7 @@ services:
   connector:         { image: connector,         tag: v1.23.0,   config: false, extraPorts: [ { name: grpc, port: 9090 } ] }
   # replicas: 2 — each pod runs one repo pipeline worker (claims per-repo jobs via
   # FOR UPDATE SKIP LOCKED), so >1 replica indexes repositories in parallel.
-  indexing:          { image: indexing,          tag: v1.65.0,   config: false, db: shipgrid_indexing, replicas: 2 }
+  indexing:          { image: indexing,          tag: v1.66.0,   config: false, db: shipgrid_indexing, replicas: 2 }
   # The six extracted security-platform microservice URLs are wired via
   # configs/security/config.yaml, not env — see that file. Unset (delete a
   # line there) = embedded path for that domain.
@@ -296,21 +296,21 @@ services:
   # readiness on /healthz there (services.security.probes in your overlay).
   security:
     image: security
-    tag: v1.125.0
+    tag: v1.127.0
     config: true
     db: shipgrid_security
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
-  ai-analysis:       { image: ai-analysis,       tag: v1.249.0,  config: false, db: shipgrid_ai_analysis }
-  ai-settings:       { image: ai-settings,       tag: v0.8.1,    config: false, db: shipgrid_ai_settings }
-  review-processor:  { image: review-processor,  tag: v1.54.0,   config: false, db: shipgrid_review_processor }
+  ai-analysis:       { image: ai-analysis,       tag: v1.252.0,  config: false, db: shipgrid_ai_analysis }
+  ai-settings:       { image: ai-settings,       tag: v0.9.0,    config: false, db: shipgrid_ai_settings }
+  review-processor:  { image: review-processor,  tag: v1.56.0,   config: false, db: shipgrid_review_processor }
   webhook-ingestor:  { image: webhook-ingestor,  tag: v1.13.0,   config: false, db: shipgrid_webhook_ingestor }
   notification:      { image: notification,      tag: v1.11.0,    config: false }
-  task-tracker:      { image: task-tracker,      tag: v1.50.0,   config: false, db: shipgrid_task_tracker }
+  task-tracker:      { image: task-tracker,      tag: v1.53.0,   config: false, db: shipgrid_task_tracker }
   qa-hub:            { image: qa-hub,             tag: v2.43.0,   config: false, db: shipgrid_qa_hub }
   dev-jobs:          { image: dev-jobs,          tag: v0.34.0,   config: false, db: shipgrid_dev_jobs }
-  delivery-ops:      { image: delivery-ops,      tag: v1.42.0,   config: false, db: shipgrid_delivery_ops }
+  delivery-ops:      { image: delivery-ops,      tag: v1.45.0,   config: false, db: shipgrid_delivery_ops }
   realtime-gateway:  { image: realtime-gateway,  tag: v1.1.4,    config: false }
   automation-runner: { image: automation-runner, tag: v1.3.3,    config: false }
   # Security split-workers. Each owns its own database and self-migrates at
