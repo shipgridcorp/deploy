@@ -15,7 +15,5 @@
 #  grpc_addr: connector:9090
 #ai:
 #  gateway_url: http://gate:8000
-#embedding:
-#  concurrency: 4
 #indexing:
 #  poll_interval: 2s

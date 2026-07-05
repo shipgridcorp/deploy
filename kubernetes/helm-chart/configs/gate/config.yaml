@@ -75,7 +75,7 @@ providers:
 # default model names the platform features use — to it so every AI feature
 # works in-perimeter, e.g.:
 #   "qwen2.5-coder:7b": local
-#   nomic-embed-text: localembed   # pair with EMBEDDING_MODEL/EMBEDDING_DIM
+#   nomic-embed-text: localembed
 #   gpt-5-mini: local
 #   gpt-4o: local
 # Adjust the per-feature model in the admin AI Settings for finer control.
@@ -90,18 +90,8 @@ model_aliases:
 {{- end }}
 {{- end }}
 
-# Default model per logical role: services request `auto:<role>` and the gate
-# substitutes the model set here. Startup fallbacks only — a role assignment
-# made in the admin console (AI Settings → Providers) always overrides these,
-# live. The deprecated embedding.model value seeds the embeddings role so
-# existing installs keep working after upgrade.
-default_models:
-{{- $dm := .Values.llm.defaultModels | default dict }}
-{{- $embLegacy := .Values.embedding.model | default "" }}
-{{- if and (not $dm) (not $embLegacy) }} {}{{- end }}
-{{- range $role, $model := $dm }}
-  {{ $role | quote }}: {{ $model | quote }}
-{{- end }}
-{{- if and $embLegacy (not (hasKey $dm "embeddings")) }}
-  "embeddings": {{ $embLegacy | quote }}
-{{- end }}
+# Which model serves each logical role (chat / chat-light / embeddings) is
+# assigned ONLY in the admin console: AI Settings → Providers → tag a model
+# with the role. Applied live, no restarts, no file fallback — an unassigned
+# role fails with a clear error pointing at the console. Vector dimensions
+# are discovered from the embedding model automatically.

@@ -17,14 +17,11 @@ data:
   LICENSE_ENABLED: {{ .Values.license.enabled | quote }}
   LICENSE_FILE: {{ .Values.license.mountPath | quote }}
   LICENSE_PUBLIC_KEY: {{ .Values.license.publicKeyHex | quote }}
-  # Embeddings (repository indexing / RAG). The embedding model is selected in
-  # the admin console (AI Settings → Providers, role "embeddings") or via
-  # llm.defaultModels in values.yaml — services request the logical
-  # auto:embeddings name and the gate substitutes the active model, so this
-  # ConfigMap no longer carries a model name. Vector dimensions are discovered
-  # from the model at runtime; EMBEDDING_DIM remains only as a pre-first-embed
-  # fallback for tenant provisioning (collections self-heal on mismatch).
-  EMBEDDING_DIM: {{ .Values.embedding.dim | quote }}
+  # Embeddings (repository indexing / RAG): the model is assigned only in the
+  # admin console (AI Settings → Providers, role "embeddings"); services
+  # request the logical auto:embeddings name and the gate substitutes the
+  # active model. Vector dimensions are discovered from the model at runtime —
+  # nothing embedding-related is configured here.
 {{- /*
 Per-service ConfigMap, emitted only for services with `config: true`. With the
 flexible loader (file → env → default) the stack boots from defaults + the shared

@@ -54,13 +54,10 @@ providers:
 #   gpt-5-mini: local
 #   gpt-4o: local
 
-# Default model per logical role: services request `auto:<role>` and the gate
-# substitutes the model set here. Roles: chat (primary analysis/reviews),
-# chat-light (bulk/low-stakes work), embeddings (vector search). These are
-# startup fallbacks — a role assigned in the admin console (AI Settings →
-# Providers) always overrides them, live, no restarts. Vector dimensions are
-# discovered from the embedding model automatically. Empty values are ignored.
-default_models:
-  chat: ${DEFAULT_CHAT_MODEL:-}
-  chat-light: ${DEFAULT_CHAT_LIGHT_MODEL:-}
-  embeddings: ${EMBEDDING_MODEL:-}
+# Which model serves each logical role (chat — analysis/reviews/assistants,
+# chat-light — bulk indexing and summaries, embeddings — vector search) is
+# assigned ONLY in the admin console: AI Settings → Providers → tag a model
+# with the role. Applied to all services live, no restarts. There is no file
+# fallback — an unassigned role fails with a clear error pointing at the
+# console. Vector dimensions are discovered from the embedding model
+# automatically.

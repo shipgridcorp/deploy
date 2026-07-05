@@ -111,10 +111,10 @@ Self-hosted wiring: set the endpoint (`LOCAL_LLM_BASE_URL` in Compose /
 
 Which model each feature uses is controlled by **roles**: services request
 `auto:chat`, `auto:chat-light` or `auto:embeddings` and the gate substitutes
-the active model. Assign roles in the admin console (AI Settings → Providers;
-applies live and overrides file config) or pre-set fallbacks in the deploy
-config (`DEFAULT_CHAT_MODEL` / `DEFAULT_CHAT_LIGHT_MODEL` / `EMBEDDING_MODEL`
-in Compose, `llm.defaultModels` in Helm). Embedding vector dimensions are
+the active model. Roles are assigned **only in the admin console** (AI
+Settings → Providers → tag a model with the role) — applied to all services
+live; there is no file or env fallback, and an unassigned role fails with a
+clear error pointing at the console. Embedding vector dimensions are
 discovered automatically; switching the embeddings model rebuilds vector
 collections — re-index afterwards.
 

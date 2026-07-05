@@ -156,18 +156,16 @@ review — it contains no calls to foreign LLMs at all.
 
 Services request models by role — `auto:chat` (analysis / reviews /
 assistants), `auto:chat-light` (bulk indexing, summaries), `auto:embeddings`
-(vector search) — and the gate substitutes the active model per request:
+(vector search) — and the gate substitutes the active model per request.
 
-- **Admin console** (recommended): AI Settings → Providers → tag a model with
-  a role. Applies to all services live and overrides file config.
-- **Chart fallbacks** for file-driven installs:
-  `--set llm.defaultModels.chat=<model>`, `llm.defaultModels.chat-light`,
-  `llm.defaultModels.embeddings`. Used only while the role is unassigned in
-  the console. The deprecated `embedding.model` value still seeds the
-  embeddings role, so upgrades keep working unchanged.
+Roles are assigned **only in the admin console**: AI Settings → Providers →
+tag a model with the role. The assignment applies to all services live and
+survives upgrades. There are no chart values for model selection by design —
+until a role is assigned, AI requests for it fail with a clear error naming
+the console page, so a misconfiguration is always visible, never silent.
 
 Embedding vector dimensions are discovered from the model automatically —
-`embedding.dim` is no longer required. Switching the embeddings model rebuilds
+there is no dimension setting. Switching the embeddings model rebuilds
 vector collections; re-index repositories afterwards (the console warns
 before the switch).
 

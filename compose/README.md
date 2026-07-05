@@ -75,15 +75,13 @@ Foreign providers (OpenAI/Anthropic) are honoured only with
 
 Services request models by *role* — `auto:chat` (analysis, reviews,
 assistants), `auto:chat-light` (bulk indexing, summaries), `auto:embeddings`
-(vector search) — and the gate substitutes the active model per request. Two
-ways to set the active models:
+(vector search) — and the gate substitutes the active model per request.
 
-- **Admin console** (recommended): AI Settings → Providers → tag a model with
-  the role. Applies to every service live, survives upgrades, and always
-  overrides the file config.
-- **`.env` fallbacks** for file-driven installs: `DEFAULT_CHAT_MODEL`,
-  `DEFAULT_CHAT_LIGHT_MODEL`, `EMBEDDING_MODEL`. Used only while the role is
-  unassigned in the console.
+Roles are assigned **only in the admin console**: AI Settings → Providers →
+tag a model with the role. The assignment applies to every service live and
+survives upgrades. There is no file or env fallback by design — until a role
+is assigned, AI requests for it fail with a clear error naming the console
+page, so a misconfiguration is always visible, never silent.
 
 Embedding vector dimensions are discovered from the model automatically — no
 dimension setting. Switching the embeddings model rebuilds vector collections;

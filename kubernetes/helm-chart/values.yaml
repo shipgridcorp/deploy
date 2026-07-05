@@ -155,31 +155,14 @@ llm:
   # + env are generated. (`local` and `localEmbed` above are the built-in two.)
   localProviders: {}
   mockEnabled: true   # set false once a real LLM is configured
-  # Default model per logical role — services request `auto:<role>` and the
-  # gate substitutes the model set here. Roles: `chat` (primary analysis /
-  # reviews / assistants), `chat-light` (bulk indexing, summaries),
-  # `embeddings` (vector search). These are startup fallbacks only: a model
-  # assigned to the role in the admin console (AI Settings → Providers) always
-  # wins, live, without redeploys. Example for a self-hosted stack:
-  #   defaultModels:
-  #     chat: qwen2.5-32b
-  #     chat-light: qwen2.5:14b
-  #     embeddings: nomic-embed-text
-  defaultModels: {}
 
-# ── Embeddings (repository indexing / RAG) ─────────────────────────────────────
-# The embedding model is chosen in the admin console (role `embeddings`) or via
-# llm.defaultModels above; vector dimensions are discovered from the model at
-# runtime — no dim to configure or keep in sync. Changing the embedding model
-# recreates tenant vector collections, so re-index afterwards.
-embedding:
-  # DEPRECATED — kept for upgrade compatibility. If set, it seeds the gate's
-  # default_models.embeddings so existing installs keep working; move the value
-  # to llm.defaultModels.embeddings (or assign the role in the admin console).
-  model: ""
-  # DEPRECATED — dimensions are auto-discovered; value only used as a fallback
-  # by tenant provisioning before the first embed (safe to leave as is).
-  dim: 3072
+# ── Model selection ─────────────────────────────────────────────────────────────
+# Which model serves each duty (chat / light chat / embeddings) is assigned
+# ONLY in the admin console: AI Settings → Providers → tag a model with the
+# role. Applied to all services live, survives upgrades, no chart values
+# involved. Embedding vector dimensions are discovered from the model
+# automatically. Switching the embeddings model rebuilds vector collections —
+# re-index repositories afterwards (the console warns before the switch).
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────
 # EVERY backend service verifies the signed license at startup (fail-closed);
