@@ -89,3 +89,19 @@ model_aliases:
   {{ $m | quote }}: {{ $name }}
 {{- end }}
 {{- end }}
+
+# Default model per logical role: services request `auto:<role>` and the gate
+# substitutes the model set here. Startup fallbacks only — a role assignment
+# made in the admin console (AI Settings → Providers) always overrides these,
+# live. The deprecated embedding.model value seeds the embeddings role so
+# existing installs keep working after upgrade.
+default_models:
+{{- $dm := .Values.llm.defaultModels | default dict }}
+{{- $embLegacy := .Values.embedding.model | default "" }}
+{{- if and (not $dm) (not $embLegacy) }} {}{{- end }}
+{{- range $role, $model := $dm }}
+  {{ $role | quote }}: {{ $model | quote }}
+{{- end }}
+{{- if and $embLegacy (not (hasKey $dm "embeddings")) }}
+  "embeddings": {{ $embLegacy | quote }}
+{{- end }}

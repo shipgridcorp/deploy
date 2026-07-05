@@ -155,19 +155,31 @@ llm:
   # + env are generated. (`local` and `localEmbed` above are the built-in two.)
   localProviders: {}
   mockEnabled: true   # set false once a real LLM is configured
+  # Default model per logical role — services request `auto:<role>` and the
+  # gate substitutes the model set here. Roles: `chat` (primary analysis /
+  # reviews / assistants), `chat-light` (bulk indexing, summaries),
+  # `embeddings` (vector search). These are startup fallbacks only: a model
+  # assigned to the role in the admin console (AI Settings → Providers) always
+  # wins, live, without redeploys. Example for a self-hosted stack:
+  #   defaultModels:
+  #     chat: qwen2.5-32b
+  #     chat-light: qwen2.5:14b
+  #     embeddings: nomic-embed-text
+  defaultModels: {}
 
 # ── Embeddings (repository indexing / RAG) ─────────────────────────────────────
-# Blank model + dim 3072 = cloud default: services embed via the gate using
-# text-embedding-3-large (3072-dim). For fully in-perimeter embeddings, point at
-# a self-hosted embedding model served by your in-cluster inference server and
-# routed by the gate (add `<model>: localembed` under model_aliases in
-# configs/gate/config.yaml). dim MUST equal the model's output size, and applies
-# stack-wide (indexing + every service that reads Qdrant) — changing it recreates
-# tenant collections, so re-index afterwards.
-#   Ollama nomic-embed-text → model: nomic-embed-text, dim: 768
+# The embedding model is chosen in the admin console (role `embeddings`) or via
+# llm.defaultModels above; vector dimensions are discovered from the model at
+# runtime — no dim to configure or keep in sync. Changing the embedding model
+# recreates tenant vector collections, so re-index afterwards.
 embedding:
-  model: ""     # EMBEDDING_MODEL — blank → text-embedding-3-large
-  dim: 3072     # EMBEDDING_DIM — 3072 (OpenAI large) | 768 (nomic) | 1024 (bge/mxbai)
+  # DEPRECATED — kept for upgrade compatibility. If set, it seeds the gate's
+  # default_models.embeddings so existing installs keep working; move the value
+  # to llm.defaultModels.embeddings (or assign the role in the admin console).
+  model: ""
+  # DEPRECATED — dimensions are auto-discovered; value only used as a fallback
+  # by tenant provisioning before the first embed (safe to leave as is).
+  dim: 3072
 
 # ── On-prem license (Ed25519) ─────────────────────────────────────────────────
 # EVERY backend service verifies the signed license at startup (fail-closed);
