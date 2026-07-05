@@ -106,8 +106,9 @@ services:
       # Block foreign LLM providers (152-ФЗ). Keep true for any RF deployment;
       # a gate image built with `-tags ru` enforces it in-binary.
       BLOCK_FOREIGN_LLM: ${BLOCK_FOREIGN_LLM:-true}
-      # Built-in mock provider — the stack runs with NO real LLM (stub answers).
-      # Set false once a real provider is configured.
+      # Built-in mock provider — lets the stack boot and pass smoke with NO real
+      # LLM (stub answers). Retires automatically once a real provider is
+      # configured (gate >= v1.28.0) — no need to flip it manually.
       MOCK_PROVIDER_ENABLED: ${MOCK_PROVIDER_ENABLED:-true}
       YANDEX_API_KEY: ${YANDEX_API_KEY:-}
       YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
@@ -142,7 +143,7 @@ services:
   # claimed via FOR UPDATE SKIP LOCKED), so two repositories index in parallel.
   indexing:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/indexing:${INDEXING_TAG:-v1.65.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/indexing:${INDEXING_TAG:-v1.66.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_indexing?sslmode=disable
@@ -153,7 +154,7 @@ services:
   # domains at their split-worker services (see config/security/config.yaml).
   security:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/security:${SECURITY_TAG:-v1.125.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/security:${SECURITY_TAG:-v1.127.0}
     volumes:
       - ./config/security:/app/config:ro
       - ${LICENSE_FILE_HOST:-./license.json}:/etc/shipgrid/license.json:ro
@@ -164,21 +165,21 @@ services:
 
   ai-analysis:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-analysis:${AI_ANALYSIS_TAG:-v1.249.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-analysis:${AI_ANALYSIS_TAG:-v1.252.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_ai_analysis?sslmode=disable
 
   ai-settings:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-settings:${AI_SETTINGS_TAG:-v0.8.1}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/ai-settings:${AI_SETTINGS_TAG:-v0.9.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_ai_settings?sslmode=disable
 
   review-processor:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/review-processor:${REVIEW_PROCESSOR_TAG:-v1.54.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/review-processor:${REVIEW_PROCESSOR_TAG:-v1.56.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_review_processor?sslmode=disable
@@ -196,7 +197,7 @@ services:
 
   task-tracker:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/task-tracker:${TASK_TRACKER_TAG:-v1.50.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/task-tracker:${TASK_TRACKER_TAG:-v1.53.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_task_tracker?sslmode=disable
@@ -217,7 +218,7 @@ services:
 
   delivery-ops:
     <<: *backend
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/delivery-ops:${DELIVERY_OPS_TAG:-v1.42.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/delivery-ops:${DELIVERY_OPS_TAG:-v1.45.0}
     environment:
       <<: *backend-env
       DATABASE_URL: postgres://shipgrid:shipgrid@postgres:5432/shipgrid_delivery_ops?sslmode=disable
@@ -297,11 +298,11 @@ services:
   # SPA frontends: on-prem builds (same-origin API base) — host-agnostic behind
   # the gateway; no configuration needed.
   frontend:
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend:${FRONTEND_TAG:-onprem-v1.527.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/frontend:${FRONTEND_TAG:-onprem-v1.528.0}
     restart: unless-stopped
 
   admin-frontend:
-    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/admin-frontend:${ADMIN_FRONTEND_TAG:-onprem-v1.54.0}
+    image: ${REGISTRY:-registry.shipgrid.app/shipgrid}/admin-frontend:${ADMIN_FRONTEND_TAG:-onprem-v1.58.0}
     restart: unless-stopped
 
   frontend-landing:

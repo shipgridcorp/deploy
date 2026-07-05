@@ -243,7 +243,7 @@ ingress:
 frontends:
   enabled: false
   items:
-    frontend:         { repo: frontend,         tag: "onprem-v1.527.0", port: 80 }  # client dashboard
+    frontend:         { repo: frontend,         tag: "onprem-v1.528.0", port: 80 }  # client dashboard
     admin-frontend:   { repo: admin-frontend,   tag: "onprem-v1.58.0",  port: 80 }
     frontend-landing: { repo: frontend-landing, tag: "onprem-v1.51.0",  port: 80 }
 
