@@ -13,9 +13,11 @@ Next steps:
      --set llm.yandex.apiKey=... --set llm.yandex.folderId=... --set llm.mockEnabled=false
    or GigaChat (--set llm.gigachat.authKey=..., mount the Russian Trusted CA),
    or a self-hosted model (--set llm.local.baseURL=...).
-3. Provide a signed license (verified by every backend service, fail-closed):
-     helm upgrade ... --set-file license.file=license.signed.json --set license.publicKeyHex=<hex>
-   License status is exposed on billing /readyz.
+3. Provide a signed license (verified by every backend service; the public key
+   is embedded in the images, so you only pass the signed file):
+     helm upgrade ... --set-file license.file=license.signed.json
+   Missing/invalid fails closed; an expired license degrades to restricted
+   (read-only) mode after grace. Status is exposed on billing /readyz.
 4. Rotate the shared dev secrets before production (see README, "Production
    hardening"): global.internalAuthSecret + secrets.*.
 5. Lock egress for production: --set networkPolicy.enabled=true (+ allowedEgressCIDRs).
