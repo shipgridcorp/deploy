@@ -152,6 +152,25 @@ example config ships for **every** service under `configs/`.
 gate image built with `-tags ru` is the binary-level guarantee for a security
 review — it contains no calls to foreign LLMs at all.
 
+### Active models (roles)
+
+Services request models by role — `auto:chat` (analysis / reviews /
+assistants), `auto:chat-light` (bulk indexing, summaries), `auto:embeddings`
+(vector search) — and the gate substitutes the active model per request:
+
+- **Admin console** (recommended): AI Settings → Providers → tag a model with
+  a role. Applies to all services live and overrides file config.
+- **Chart fallbacks** for file-driven installs:
+  `--set llm.defaultModels.chat=<model>`, `llm.defaultModels.chat-light`,
+  `llm.defaultModels.embeddings`. Used only while the role is unassigned in
+  the console. The deprecated `embedding.model` value still seeds the
+  embeddings role, so upgrades keep working unchanged.
+
+Embedding vector dimensions are discovered from the model automatically —
+`embedding.dim` is no longer required. Switching the embeddings model rebuilds
+vector collections; re-index repositories afterwards (the console warns
+before the switch).
+
 ---
 
 ## Licensing

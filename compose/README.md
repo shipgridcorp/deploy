@@ -71,6 +71,24 @@ installs where everything must be file-driven:
 Foreign providers (OpenAI/Anthropic) are honoured only with
 `BLOCK_FOREIGN_LLM=false` — for installs outside the RF regulatory scope.
 
+### Which model does each feature use?
+
+Services request models by *role* — `auto:chat` (analysis, reviews,
+assistants), `auto:chat-light` (bulk indexing, summaries), `auto:embeddings`
+(vector search) — and the gate substitutes the active model per request. Two
+ways to set the active models:
+
+- **Admin console** (recommended): AI Settings → Providers → tag a model with
+  the role. Applies to every service live, survives upgrades, and always
+  overrides the file config.
+- **`.env` fallbacks** for file-driven installs: `DEFAULT_CHAT_MODEL`,
+  `DEFAULT_CHAT_LIGHT_MODEL`, `EMBEDDING_MODEL`. Used only while the role is
+  unassigned in the console.
+
+Embedding vector dimensions are discovered from the model automatically — no
+dimension setting. Switching the embeddings model rebuilds vector collections;
+re-index repositories afterwards (the console warns before the switch).
+
 ## Service configs
 
 Every service boots from built-in defaults + the shared environment in

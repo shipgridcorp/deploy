@@ -109,6 +109,15 @@ Self-hosted wiring: set the endpoint (`LOCAL_LLM_BASE_URL` in Compose /
 `model_aliases` in the gate config — see `config/gate/config.yaml` (Compose) or
 `configs/gate/config.yaml` (Helm).
 
+Which model each feature uses is controlled by **roles**: services request
+`auto:chat`, `auto:chat-light` or `auto:embeddings` and the gate substitutes
+the active model. Assign roles in the admin console (AI Settings → Providers;
+applies live and overrides file config) or pre-set fallbacks in the deploy
+config (`DEFAULT_CHAT_MODEL` / `DEFAULT_CHAT_LIGHT_MODEL` / `EMBEDDING_MODEL`
+in Compose, `llm.defaultModels` in Helm). Embedding vector dimensions are
+discovered automatically; switching the embeddings model rebuilds vector
+collections — re-index afterwards.
+
 ## Configuration model
 
 Every service boots from built-in defaults + the shared environment (secrets,

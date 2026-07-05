@@ -17,14 +17,13 @@ data:
   LICENSE_ENABLED: {{ .Values.license.enabled | quote }}
   LICENSE_FILE: {{ .Values.license.mountPath | quote }}
   LICENSE_PUBLIC_KEY: {{ .Values.license.publicKeyHex | quote }}
-  # Embeddings (repository indexing / RAG). Blank = cloud default
-  # (text-embedding-3-large, 3072-dim via the gate's cloud provider). For
-  # self-hosted embeddings set embedding.model to a model the gate routes to your
-  # in-cluster server (e.g. nomic-embed-text) and embedding.dim to that model's
-  # output size (nomic-embed-text=768). Both are read by every service that shares
-  # Qdrant, so they stay consistent stack-wide. Requires service images built with
-  # EMBEDDING_MODEL/EMBEDDING_DIM support.
-  EMBEDDING_MODEL: {{ .Values.embedding.model | quote }}
+  # Embeddings (repository indexing / RAG). The embedding model is selected in
+  # the admin console (AI Settings → Providers, role "embeddings") or via
+  # llm.defaultModels in values.yaml — services request the logical
+  # auto:embeddings name and the gate substitutes the active model, so this
+  # ConfigMap no longer carries a model name. Vector dimensions are discovered
+  # from the model at runtime; EMBEDDING_DIM remains only as a pre-first-embed
+  # fallback for tenant provisioning (collections self-heal on mismatch).
   EMBEDDING_DIM: {{ .Values.embedding.dim | quote }}
 {{- /*
 Per-service ConfigMap, emitted only for services with `config: true`. With the

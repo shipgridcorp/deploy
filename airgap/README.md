@@ -34,8 +34,11 @@ The bundle goes straight into the local Docker daemon; no registry needed:
 cd ../compose
 ./install.sh --bundle /path/to/shipgrid-onprem-images.tar.gz
 # .env: LOCAL_LLM_BASE_URL=http://<vllm-host>:<port>/v1
+#       DEFAULT_CHAT_MODEL=<chat-model>  EMBEDDING_MODEL=<embed-model>
 #       LICENSE_PUBLIC_KEY=<hex>   (license.signed.json → ./license.json)
 # + route your model names via model_aliases in config/gate/config.yaml
+# (role assignments in the admin console — AI Settings → Providers —
+#  override the env defaults live, no restarts)
 ```
 
 ## C2 — Kubernetes
@@ -49,7 +52,10 @@ chart exactly as in [Scenario B](../kubernetes/) with three air-gap overrides:
 
 - `--set global.registry=harbor.internal/shipgrid` — images only from inside;
 - LLM = a Service in the namespace: `--set llm.local.baseURL=http://vllm:8000/v1`
-  + route your model names via `model_aliases` in `configs/gate/config.yaml`;
+  + default models per role: `--set llm.defaultModels.chat=<model>`
+  `--set llm.defaultModels.embeddings=<embed-model>` (model→provider routing
+  via `model_aliases` in `configs/gate/config.yaml`; assignments made later in
+  the admin console override these live);
 - `--set networkPolicy.enabled=true` with **default-deny egress** — no outbound
   traffic at all.
 
