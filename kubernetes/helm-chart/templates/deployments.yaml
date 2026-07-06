@@ -102,10 +102,6 @@ spec:
             - name: CONFIG_PATH
               value: {{ printf "%s/config.yaml" $.Values.defaults.configMountPath | quote }}
             {{- end }}
-            {{- if and (eq $name "admin-auth") $.Values.adminBootstrap.email }}
-            - name: BOOTSTRAP_ADMIN_EMAIL
-              value: {{ $.Values.adminBootstrap.email | quote }}
-            {{- end }}
             {{- if and (eq $name "gate") $.Values.infra.clickhouse.enabled }}
             # Usage analytics (admin LLM-usage tab) live in ClickHouse; without
             # this the gate's /internal/analytics/* return 404 → admin shows

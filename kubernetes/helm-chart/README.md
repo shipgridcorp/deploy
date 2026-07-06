@@ -274,7 +274,7 @@ per-service `services.<name>.probes`.
 | `global.imagePullSecrets` | `[]` | pull secret(s) for the registry |
 | `secrets.*` | dev defaults | shared JWT / encryption / Redis / Neo4j secrets — **rotate** |
 | `site.publicAppURL` / `adminAppURL` | `""` | public origins (deep links / SAML ACS) |
-| `adminBootstrap.email` / `.password` | `""` | first admin-console user; set `.password` (secret values) to seed it without logging — else a temp password is printed once |
+| `adminBootstrap.email` / `.password` | `""` | first admin-console user; **set `.password`** (secret values) — the seed Job creates the admin without logging the password. Password is required; without it no admin is created |
 | `llm.blockForeignProviders` | `true` | block OpenAI/Anthropic (152-ФЗ) |
 | `llm.yandex.*` / `llm.gigachat.*` | `""` | RU LLM credentials |
 | `llm.mockEnabled` | `true` | run with no real LLM (PoC) |

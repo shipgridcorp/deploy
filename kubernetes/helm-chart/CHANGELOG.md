@@ -4,6 +4,17 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.10 — 2026-07-06
+
+### Changed
+- **First-admin bootstrap requires a password from a secret — no log fallback.**
+  The admin-auth image no longer generates a one-time password and prints it to
+  the log. Seed the first admin via `adminBootstrap.email` + `adminBootstrap.password`
+  (the seed Job upserts it deterministically; the password is never logged). With
+  `adminBootstrap.password` empty, no admin is created. The redundant
+  `BOOTSTRAP_ADMIN_EMAIL` env was removed from the admin-auth Deployment
+  (K8s seeding is Job-only).
+
 ## 0.4.9 — 2026-07-06
 
 ### Changed

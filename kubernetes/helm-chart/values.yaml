@@ -50,22 +50,20 @@ site:
   spBaseURL: ""      # SP_BASE_URL     — SAML SP base (usually = publicAppURL)
 
 # ── First admin bootstrap ───────────────────────────────────────────────────────
-# Set adminBootstrap.email to the first admin-console email.
+# Set BOTH adminBootstrap.email and adminBootstrap.password to seed the first
+# admin-console user. A post-install/upgrade hook Job (templates/admin-seed.yaml)
+# seeds/resets the admin to THIS password deterministically (bcrypt via pgcrypto),
+# so the first admin is set fully from values — the password is NEVER written to
+# the log. Idempotent: re-running upserts the same admin. Rotate after login.
 #
-# Two modes:
-#  • email only  → admin-auth creates that admin on startup with a RANDOM temp
-#    password (printed once in the admin-auth pod log) + forced change on first
-#    login. Recoverable only from that first log line.
-#  • email + password → a post-install/upgrade hook Job (templates/admin-seed.yaml)
-#    seeds/resets the admin to THIS password deterministically (bcrypt via
-#    pgcrypto), so the first admin is set fully from values/env — no log
-#    scraping. Idempotent: re-running upserts the same admin. Rotate after login.
+# A password is REQUIRED: with email set but password empty, the Job does not run
+# and no admin is created (there is no auto-generated temp-password fallback).
 #
 # The password is install-specific: put it in your secret values file / --set /
 # a SealedSecret, NOT in git.
 adminBootstrap:
-  email: ""            # BOOTSTRAP_ADMIN_EMAIL (also drives the in-service bootstrap)
-  password: ""         # set → hook Job seeds this exact password; empty → random-temp mode
+  email: ""            # first admin-console email
+  password: ""         # required — the hook Job seeds this exact password
   forcePasswordChange: false   # true → admin must change the seeded password on first login
   # DB the seed Job connects to. Defaults match the bundled postgres; point at
   # your managed admin-auth database when infra.postgres.enabled=false.
