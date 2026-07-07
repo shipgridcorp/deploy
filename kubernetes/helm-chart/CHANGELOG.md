@@ -4,6 +4,14 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.12 — 2026-07-07
+
+### Changed
+- **Prometheus metric namespace renamed `devflow_*` → `shipgrid_*`.** Bundled
+  Grafana dashboards and baseline alert rules updated to match. Requires service
+  images built from shared ≥ v0.86.0 (they emit `shipgrid_*`); align the image
+  pins to that release set.
+
 ## 0.4.11 — 2026-07-07
 
 ### Added

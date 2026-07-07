@@ -150,8 +150,8 @@ data:
               description: "Prometheus failed to scrape {{`{{ $labels.instance }}`}} for 2 minutes."
           - alert: ShipGridHighErrorRate
             expr: |
-              sum by (service) (rate(devflow_http_requests_total{status=~"5.."}[5m]))
-                / clamp_min(sum by (service) (rate(devflow_http_requests_total[5m])), 0.001) > 0.05
+              sum by (service) (rate(shipgrid_http_requests_total{status=~"5.."}[5m]))
+                / clamp_min(sum by (service) (rate(shipgrid_http_requests_total[5m])), 0.001) > 0.05
             for: 10m
             labels: { severity: warning }
             annotations:
@@ -160,7 +160,7 @@ data:
           - alert: ShipGridHighRequestLatency
             expr: |
               histogram_quantile(0.95,
-                sum by (service, le) (rate(devflow_http_request_duration_seconds_bucket[5m]))) > 2
+                sum by (service, le) (rate(shipgrid_http_request_duration_seconds_bucket[5m]))) > 2
             for: 10m
             labels: { severity: warning }
             annotations:

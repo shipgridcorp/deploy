@@ -14,7 +14,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(devflow_http_requests_total{service=~\"$service\"}[5m]))",
+          "expr": "sum(rate(shipgrid_http_requests_total{service=~\"$service\"}[5m]))",
           "refId": "A",
           "legendFormat": "rps"
         }
@@ -29,7 +29,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(devflow_http_requests_total{service=~\"$service\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(devflow_http_requests_total{service=~\"$service\"}[5m])), 0.001)",
+          "expr": "sum(rate(shipgrid_http_requests_total{service=~\"$service\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(shipgrid_http_requests_total{service=~\"$service\"}[5m])), 0.001)",
           "refId": "A"
         }
       ],
@@ -52,7 +52,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(devflow_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(shipgrid_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
           "refId": "A"
         }
       ],
@@ -83,7 +83,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
         {
-          "expr": "sum by (status) (rate(devflow_http_requests_total{service=~\"$service\"}[5m]))",
+          "expr": "sum by (status) (rate(shipgrid_http_requests_total{service=~\"$service\"}[5m]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -98,17 +98,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(devflow_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(shipgrid_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(devflow_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(shipgrid_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(devflow_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(shipgrid_http_request_duration_seconds_bucket{service=~\"$service\"}[5m])))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -123,7 +123,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
         {
-          "expr": "topk(10, sum by (path, method) (rate(devflow_http_requests_total{service=~\"$service\"}[5m])))",
+          "expr": "topk(10, sum by (path, method) (rate(shipgrid_http_requests_total{service=~\"$service\"}[5m])))",
           "legendFormat": "{{method}} {{path}}",
           "refId": "A",
           "instant": true,
@@ -139,7 +139,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
         {
-          "expr": "topk(10, histogram_quantile(0.95, sum by (le, path, method) (rate(devflow_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, path, method) (rate(shipgrid_http_request_duration_seconds_bucket{service=~\"$service\"}[5m]))))",
           "legendFormat": "{{method}} {{path}}",
           "refId": "A",
           "instant": true,
@@ -158,7 +158,7 @@
         "name": "service",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-        "query": { "query": "label_values(devflow_http_requests_total, service)", "refId": "service" },
+        "query": { "query": "label_values(shipgrid_http_requests_total, service)", "refId": "service" },
         "current": { "selected": false, "text": "All", "value": "$__all" },
         "includeAll": true,
         "multi": true,
