@@ -1,0 +1,171 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": "DS_PROMETHEUS",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "max by (service) (probe_success{job=\"devflow-http-probe\",namespace=\"production\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Probe Status",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "Value #A": false,
+              "instance": true,
+              "job": true,
+              "namespace": true
+            },
+            "renameByName": {
+              "Value #A": "up"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": "DS_PROMETHEUS",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "max by (service) (probe_success{job=\"devflow-tcp-probe\",namespace=\"production\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Infrastructure TCP Probe Status",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "Value #A": false,
+              "instance": true,
+              "job": true,
+              "namespace": true
+            },
+            "renameByName": {
+              "Value #A": "up"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": "DS_PROMETHEUS",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "probe_duration_seconds{job=\"devflow-http-probe\",namespace=\"production\"}",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Probe Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "DS_PROMETHEUS",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "probe_duration_seconds{job=\"devflow-tcp-probe\",namespace=\"production\"}",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "TCP Probe Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "DS_PROMETHEUS",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "up{job=\"devflow-direct-metrics\",namespace=\"production\"}",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Prometheus Scrape Status",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "devflow",
+    "health"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "title": "DevFlow Service Health",
+  "version": 1
+}

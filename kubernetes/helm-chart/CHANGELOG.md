@@ -4,6 +4,21 @@ All notable changes to the ShipGrid on-prem Helm chart are documented here.
 This chart follows [Semantic Versioning](https://semver.org/); the `appVersion`
 tracks the ShipGrid platform release.
 
+## 0.4.11 — 2026-07-07
+
+### Added
+- **Observability (bundle + BYO).** New opt-in `observability.monitoring.enabled`
+  bundles Prometheus + Grafana (ShipGrid dashboards) + Jaeger all-in-one, with a
+  lean baseline alert set (service-down, 5xx rate, p95 latency). Pods now carry
+  `prometheus.io/scrape` annotations (`observability.monitoring.scrapeAnnotations`)
+  so a bring-your-own Prometheus discovers every service's `/metrics`.
+- **Client-configurable trace export.** `observability.tracing.*` values (rendered
+  into the shared `shipgrid-config` ConfigMap as `OTEL_*` env) control the OTLP
+  endpoint, protocol, auth headers, TLS, head-sampling ratio, error-only mode,
+  per-service on/off, and PII body-redaction — mapping 1:1 to the admin console's
+  Observability page. Applied on pod restart. Default trace target is the bundled
+  Jaeger when the monitoring stack is on.
+
 ## 0.4.10 — 2026-07-06
 
 ### Changed

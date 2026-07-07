@@ -26,6 +26,14 @@ spec:
         {{- if $svc.config }}
         checksum/config: {{ include "shipgrid.svcConfigChecksum" (dict "name" $name "root" $) }}
         {{- end }}
+        {{- /* Let any Prometheus (the bundled one or the client's own) discover
+               this pod's /metrics endpoint. gate serves metrics too but on its
+               own path/port defaults handled by the scraper. */}}
+        {{- if $.Values.observability.monitoring.scrapeAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $port | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
     spec:
       # Don't inject legacy <SVC>_PORT_* env vars for every Service in the
       # namespace — in a shared namespace that's hundreds of vars and breaks

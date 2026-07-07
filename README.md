@@ -127,6 +127,31 @@ config for **every** service — `compose/config/<service>/config.yaml` and
 `kubernetes/helm-chart/configs/<service>/config.yaml`; keep only the keys you
 change.
 
+## Observability
+
+Every service exposes Prometheus metrics on `/metrics` (HTTP rate/errors/latency,
+inter-service calls, and BA/SA generation-step durations) and emits OpenTelemetry
+traces. Each API response carries an `X-Trace-Id` header, and the UI surfaces that
+trace ID on errors so a failure is traceable end-to-end.
+
+**Two ways to consume it — bundle or bring-your-own:**
+
+- **Bundled stack.** Turn it on and you get Prometheus + Grafana (with the
+  ShipGrid dashboards) + Jaeger in-cluster:
+  - Compose: `docker compose --profile monitoring up -d`
+    → Grafana `:3000` (admin/`GRAFANA_ADMIN_PASSWORD`), Jaeger UI `:16686`.
+  - Helm: `--set observability.monitoring.enabled=true`.
+- **Bring your own.** Leave the bundle off. Pods carry `prometheus.io/scrape`
+  annotations (Helm) / the compose targets follow the `:8000/metrics` convention,
+  so your Prometheus discovers them. Point traces at your collector with
+  `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS` for an
+  authenticated collector).
+
+**Trace-export policy** (endpoint, protocol, auth headers, TLS, head-sampling
+ratio, error-only mode, per-service on/off, and PII body redaction) is set from
+the admin console's **Observability** page — or directly via the `OTEL_*` env /
+`observability.tracing.*` Helm values. Changes apply on the next pod restart.
+
 ## Before production
 
 Dev defaults boot out of the box; production needs four things (details in each

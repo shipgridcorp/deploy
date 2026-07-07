@@ -1,0 +1,354 @@
+{{- if .Values.observability.monitoring.enabled }}
+{{- $mon := .Values.observability.monitoring }}
+# ── Bundled observability stack (opt-in: observability.monitoring.enabled) ─────
+# Prometheus (scrapes every pod exposing prometheus.io/scrape) + Grafana
+# (ShipGrid dashboards) + Jaeger all-in-one (default OTLP trace target). Turn
+# this off and point observability.tracing.otlpEndpoint at your own stack to
+# bring your own observability instead.
+---
+# ═══ Jaeger all-in-one ═════════════════════════════════════════════════════════
+{{- if $mon.jaeger.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/name: jaeger
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: jaeger
+          image: {{ $mon.jaeger.image }}
+          imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+          ports:
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: ui,        containerPort: 16686 }
+          {{- with $mon.jaeger.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: jaeger
+spec:
+  selector:
+    app.kubernetes.io/name: jaeger
+  ports:
+    - { name: otlp-http, port: 4318, targetPort: 4318 }
+    - { name: otlp-grpc, port: 4317, targetPort: 4317 }
+    - { name: ui,        port: 16686, targetPort: 16686 }
+{{- end }}
+---
+# ═══ Prometheus ════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      # Auto-discover every ShipGrid pod that advertises prometheus.io/scrape.
+      - job_name: shipgrid-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [ {{ .Release.Namespace }} ]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: replace
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+  alerts.yml: |
+    groups:
+      - name: shipgrid-baseline
+        rules:
+          - alert: ShipGridServiceDown
+            expr: up{job="shipgrid-pods"} == 0
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "ShipGrid target {{`{{ $labels.service }}`}} is down"
+              description: "Prometheus failed to scrape {{`{{ $labels.instance }}`}} for 2 minutes."
+          - alert: ShipGridHighErrorRate
+            expr: |
+              sum by (service) (rate(devflow_http_requests_total{status=~"5.."}[5m]))
+                / clamp_min(sum by (service) (rate(devflow_http_requests_total[5m])), 0.001) > 0.05
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "High 5xx error rate on {{`{{ $labels.service }}`}}"
+              description: "Over 5% of requests to {{`{{ $labels.service }}`}} returned 5xx for 10 minutes."
+          - alert: ShipGridHighRequestLatency
+            expr: |
+              histogram_quantile(0.95,
+                sum by (service, le) (rate(devflow_http_request_duration_seconds_bucket[5m]))) > 2
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "High request latency on {{`{{ $labels.service }}`}}"
+              description: "p95 latency for {{`{{ $labels.service }}`}} exceeded 2s for 10 minutes."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/name: prometheus
+      annotations:
+        checksum/config: {{ .Values.observability | toYaml | sha256sum }}
+    spec:
+      serviceAccountName: prometheus
+      enableServiceLinks: false
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: prometheus
+          image: {{ $mon.prometheus.image }}
+          imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ $mon.prometheus.retention }}
+          ports:
+            - { name: http, containerPort: 9090 }
+          {{- with $mon.prometheus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus }
+            - { name: data, mountPath: /prometheus }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: prometheus
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - { name: http, port: 9090, targetPort: 9090 }
+---
+# ═══ Grafana ═══════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+      {{- if $mon.jaeger.enabled }}
+      - name: Jaeger
+        type: jaeger
+        access: proxy
+        url: http://jaeger:16686
+      {{- end }}
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: shipgrid
+        orgId: 1
+        folder: ShipGrid
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+data:
+  {{- range $path, $_ := .Files.Glob "files/dashboards/*.json" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  template:
+    metadata:
+      labels:
+        {{- include "shipgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/name: grafana
+      annotations:
+        checksum/dashboards: {{ .Files.Glob "files/dashboards/*.json" | toString | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: grafana
+          image: {{ $mon.grafana.image }}
+          imagePullPolicy: {{ $.Values.defaults.imagePullPolicy }}
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ $mon.grafana.adminPassword | quote }}
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            # Read-only anonymous access is off by default; admins log in.
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+          ports:
+            - { name: http, containerPort: 3000 }
+          {{- with $mon.grafana.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: provisioning-datasources, mountPath: /etc/grafana/provisioning/datasources }
+            - { name: provisioning-dashboards, mountPath: /etc/grafana/provisioning/dashboards }
+            - { name: dashboards, mountPath: /var/lib/grafana/dashboards }
+      volumes:
+        - name: provisioning-datasources
+          configMap:
+            name: grafana-provisioning
+            items:
+              - { key: datasources.yaml, path: datasources.yaml }
+        - name: provisioning-dashboards
+          configMap:
+            name: grafana-provisioning
+            items:
+              - { key: dashboards.yaml, path: dashboards.yaml }
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    {{- include "shipgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/name: grafana
+spec:
+  selector:
+    app.kubernetes.io/name: grafana
+  ports:
+    - { name: http, port: 3000, targetPort: 3000 }
+{{- end }}

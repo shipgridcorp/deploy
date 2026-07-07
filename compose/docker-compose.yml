@@ -43,6 +43,22 @@ x-backend-env: &backend-env
   LICENSE_FILE: /etc/shipgrid/license.json
   # Advanced override (unsigned/dev builds only; ignored when a key is embedded).
   LICENSE_PUBLIC_KEY: ${LICENSE_PUBLIC_KEY:-}
+  # ── Observability (traces) ────────────────────────────────────────────────
+  # Every service emits OTLP traces and returns X-Trace-Id on each response.
+  # Default target is the bundled Jaeger (`docker compose --profile monitoring
+  # up`). For bring-your-own, point OTEL_EXPORTER_OTLP_ENDPOINT at your own
+  # collector. Policy knobs mirror the admin console's Observability page.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-}
+  OTEL_TRACE_SAMPLE_RATIO: ${OTEL_TRACE_SAMPLE_RATIO:-}
+  OTEL_TRACE_ERROR_ONLY: ${OTEL_TRACE_ERROR_ONLY:-false}
+  OTEL_TRACE_DISABLED_SERVICES: ${OTEL_TRACE_DISABLED_SERVICES:-}
+  OTEL_TRACE_REDACT_BODIES: ${OTEL_TRACE_REDACT_BODIES:-false}
+  # Turn tracing off entirely (e.g. when running without the monitoring profile
+  # and you don't want export-retry log noise): set OTEL_SDK_DISABLED=true.
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
 
 # Common shape of every backend service. Services that mount a config file
 # override `volumes` (and add CONFIG_PATH) explicitly. DATABASE_URL points each
@@ -435,6 +451,52 @@ services:
     image: yuzutech/kroki:0.26.0
     restart: unless-stopped
 
+  # ── Observability stack ───────────────────────────────────────────────────────
+  # Opt-in: `docker compose --profile monitoring up -d`. Bundles Jaeger (traces),
+  # Prometheus (scrapes every service's /metrics) and Grafana (ShipGrid
+  # dashboards). Bring-your-own: skip the profile and point
+  # OTEL_EXPORTER_OTLP_ENDPOINT + your Prometheus at the stack instead.
+  jaeger:
+    profiles: ["monitoring"]
+    image: ${JAEGER_IMAGE:-jaegertracing/all-in-one:1.60}
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"   # Jaeger UI
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    profiles: ["monitoring"]
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.2.0}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   pg_data:
   redis_data:
@@ -442,3 +504,5 @@ volumes:
   neo4j_data:
   qdrant_data:
   clickhouse_data:
+  prometheus_data:
+  grafana_data:

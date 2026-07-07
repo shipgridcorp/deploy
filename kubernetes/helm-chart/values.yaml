@@ -105,6 +105,58 @@ defaults:
   tolerations: []
   affinity: {}
 
+# ── Observability ─────────────────────────────────────────────────────────────
+# Every backend service exposes Prometheus metrics on /metrics and emits OTLP
+# traces (each response carries X-Trace-Id for end-to-end correlation). Two ways
+# to consume them:
+#   • Bundle    — set monitoring.enabled=true to install Prometheus + Grafana
+#                 (with the ShipGrid dashboards) + Jaeger all-in-one in-cluster.
+#   • Bring-your-own — leave monitoring.enabled=false, keep scrapeAnnotations on
+#                 so your own Prometheus discovers the pods, and point
+#                 tracing.otlpEndpoint at your own collector / Jaeger.
+# These settings map 1:1 to the admin console's Observability page; changing
+# them takes effect on the next pod restart (rollout restart / helm upgrade).
+observability:
+  tracing:
+    enabled: true
+    # OTLP endpoint for traces. Empty + monitoring.enabled → the bundled Jaeger
+    # (http://jaeger:4318). For BYO, set your collector, e.g.
+    # http://otel-collector.observability:4318 or https://tempo.example.ru
+    otlpEndpoint: ""
+    protocol: http        # http | grpc
+    headers: ""           # "key=value,key2=value2" — auth token for a protected collector
+    insecure: ""          # "", "true", "false" (default derived from https:// scheme)
+    sampleRatio: ""       # "" = sample all; e.g. "0.1" = 10% head sampling
+    errorOnly: false      # true → export only traces that contain an error
+    disabledServices: ""  # comma list to exclude, e.g. "indexing,realtime-gateway"
+    redactBodies: false   # true → strip request/response bodies from spans (PII)
+  monitoring:
+    enabled: false        # bundle Prometheus + Grafana + Jaeger all-in-one
+    scrapeAnnotations: true  # add prometheus.io/scrape so any Prometheus finds the pods
+    prometheus:
+      image: prom/prometheus:v2.54.1
+      retention: 7d
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits:   { cpu: 500m, memory: 1Gi }
+    grafana:
+      image: grafana/grafana:11.2.0
+      # Change for production; the admin user is `admin`.
+      adminPassword: admin
+      # Expose Grafana via the chart ingress at this host (empty = ClusterIP only).
+      host: ""
+      resources:
+        requests: { cpu: 50m, memory: 128Mi }
+        limits:   { cpu: 300m, memory: 512Mi }
+    jaeger:
+      enabled: true
+      image: jaegertracing/all-in-one:1.60
+      # Expose the Jaeger UI via the chart ingress at this host (empty = ClusterIP only).
+      host: ""
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits:   { cpu: 500m, memory: 1Gi }
+
 # ── RU LLM policy ─────────────────────────────────────────────────────────────
 # Block foreign LLM providers stack-wide (152-ФЗ). The gate config also enforces
 # this; a gate image built with `-tags ru` is the binary-level guarantee.

@@ -19,6 +19,26 @@ data:
   LICENSE_FILE: {{ .Values.license.mountPath | quote }}
   # Dev-only override of the embedded key; empty in prod (then it is ignored).
   LICENSE_PUBLIC_KEY: {{ .Values.license.publicKeyHex | quote }}
+  # ── Observability (traces) — read by shared/tracing.InitTracer at boot ──────
+  # Client-configurable via the admin console's Observability page; every field
+  # maps to a values.observability.tracing key. Applied on pod restart. When the
+  # bundled Jaeger is on and no endpoint is set, default to it.
+  {{- $trc := .Values.observability.tracing }}
+  {{- $otlp := $trc.otlpEndpoint }}
+  {{- if and (not $otlp) .Values.observability.monitoring.enabled .Values.observability.monitoring.jaeger.enabled }}
+  {{- $otlp = "http://jaeger:4318" }}
+  {{- end }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ $otlp | quote }}
+  OTEL_EXPORTER_OTLP_PROTOCOL: {{ $trc.protocol | default "http" | quote }}
+  OTEL_EXPORTER_OTLP_HEADERS: {{ $trc.headers | quote }}
+  OTEL_EXPORTER_OTLP_INSECURE: {{ $trc.insecure | quote }}
+  OTEL_TRACE_SAMPLE_RATIO: {{ $trc.sampleRatio | quote }}
+  OTEL_TRACE_ERROR_ONLY: {{ $trc.errorOnly | quote }}
+  OTEL_TRACE_DISABLED_SERVICES: {{ $trc.disabledServices | quote }}
+  OTEL_TRACE_REDACT_BODIES: {{ $trc.redactBodies | quote }}
+  # Turn tracing off entirely for all services (per-service opt-out uses
+  # OTEL_TRACE_DISABLED_SERVICES above).
+  OTEL_SDK_DISABLED: {{ not $trc.enabled | quote }}
   # Embeddings (repository indexing / RAG): the model is assigned only in the
   # admin console (AI Settings → Providers, role "embeddings"); services
   # request the logical auto:embeddings name and the gate substitutes the

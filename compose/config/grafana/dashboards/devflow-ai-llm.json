@@ -1,0 +1,121 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "AI calls / s",
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(devflow_ai_call_duration_seconds_count[5m]))", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "stat",
+      "title": "AI error rate",
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(devflow_ai_call_errors_total[5m])) / clamp_min(sum(rate(devflow_ai_call_duration_seconds_count[5m])), 0.001)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 0.02 },
+            { "color": "red", "value": 0.1 }
+          ] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 AI latency",
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(devflow_ai_call_duration_seconds_bucket[5m])))", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "stat",
+      "title": "p99 AI latency",
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(devflow_ai_call_duration_seconds_bucket[5m])))", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "AI calls by task type (rate)",
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum by (task_type) (rate(devflow_ai_call_duration_seconds_count[5m]))",
+          "legendFormat": "{{task_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "AI errors by task type",
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum by (task_type) (rate(devflow_ai_call_errors_total[5m]))",
+          "legendFormat": "{{task_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "AI p95 latency by task type",
+      "id": 7,
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (task_type, le) (rate(devflow_ai_call_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{task_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["devflow", "ai", "llm"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "",
+  "title": "DevFlow AI / LLM Calls",
+  "uid": "devflow-ai-llm",
+  "version": 1,
+  "weekStart": ""
+}
