@@ -156,7 +156,7 @@
   "schemaVersion": 39,
   "style": "dark",
   "tags": [
-    "devflow",
+    "shipgrid",
     "health"
   ],
   "templating": {
@@ -166,6 +166,6 @@
     "from": "now-6h",
     "to": "now"
   },
-  "title": "DevFlow Service Health",
+  "title": "ShipGrid Service Health",
   "version": 1
 }

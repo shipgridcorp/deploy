@@ -137,7 +137,7 @@
   "schemaVersion": 39,
   "style": "dark",
   "tags": [
-    "devflow",
+    "shipgrid",
     "http"
   ],
   "templating": {
@@ -147,6 +147,6 @@
     "from": "now-6h",
     "to": "now"
   },
-  "title": "DevFlow HTTP Runtime",
+  "title": "ShipGrid HTTP Runtime",
   "version": 1
 }

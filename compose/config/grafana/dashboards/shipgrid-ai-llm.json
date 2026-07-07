@@ -10,7 +10,7 @@
       "type": "stat",
       "title": "AI calls / s",
       "id": 1,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "targets": [
         { "expr": "sum(rate(shipgrid_ai_call_duration_seconds_count[5m]))", "refId": "A" }
@@ -21,7 +21,7 @@
       "type": "stat",
       "title": "AI error rate",
       "id": 2,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
@@ -44,7 +44,7 @@
       "type": "stat",
       "title": "p95 AI latency",
       "id": 3,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         { "expr": "histogram_quantile(0.95, sum by (le) (rate(shipgrid_ai_call_duration_seconds_bucket[5m])))", "refId": "A" }
@@ -55,7 +55,7 @@
       "type": "stat",
       "title": "p99 AI latency",
       "id": 4,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "targets": [
         { "expr": "histogram_quantile(0.99, sum by (le) (rate(shipgrid_ai_call_duration_seconds_bucket[5m])))", "refId": "A" }
@@ -66,7 +66,7 @@
       "type": "timeseries",
       "title": "AI calls by task type (rate)",
       "id": 5,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
         {
@@ -81,7 +81,7 @@
       "type": "timeseries",
       "title": "AI errors by task type",
       "id": 6,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "targets": [
         {
@@ -96,7 +96,7 @@
       "type": "timeseries",
       "title": "AI p95 latency by task type",
       "id": 7,
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
       "targets": [
         {
@@ -110,12 +110,12 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["devflow", "ai", "llm"],
+  "tags": ["shipgrid", "ai", "llm"],
   "templating": { "list": [] },
   "time": { "from": "now-6h", "to": "now" },
   "timezone": "",
-  "title": "DevFlow AI / LLM Calls",
-  "uid": "devflow-ai-llm",
+  "title": "ShipGrid AI / LLM Calls",
+  "uid": "shipgrid-ai-llm",
   "version": 1,
   "weekStart": ""
 }

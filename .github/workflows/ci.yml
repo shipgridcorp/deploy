@@ -37,7 +37,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck compose/install.sh compose/smoke.sh scripts/rotate-secrets.sh airgap/mirror-to-registry.sh
+        run: shellcheck compose/install.sh compose/smoke.sh scripts/rotate-secrets.sh scripts/sync-dashboards.sh airgap/mirror-to-registry.sh
+
+  dashboard-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: dashboards identical across observability + compose + helm mirrors
+        run: |
+          src=observability/dashboards
+          for m in compose/config/grafana/dashboards kubernetes/helm-chart/files/dashboards; do
+            if ! diff -ru "$src" "$m"; then
+              echo "::error::Dashboard drift: $m differs from $src — run scripts/sync-dashboards.sh in the same commit."
+              exit 1
+            fi
+          done
+          echo "OK: $(ls "$src"/*.json | wc -l) dashboards, identical in all mirrors"
 
   image-drift:
     runs-on: ubuntu-latest

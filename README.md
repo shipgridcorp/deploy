@@ -38,8 +38,13 @@ deploy/
 ├── kubernetes/         Scenario B — umbrella Helm chart + production values
 │   └── helm-chart/     the chart itself (also published as an OCI artifact)
 ├── airgap/             Scenario C — bundle verification & registry mirroring
-└── scripts/            shared tooling (secret rotation)
+├── observability/      Grafana dashboards (import into your own Grafana, or auto-provisioned)
+└── scripts/            shared tooling (secret rotation, dashboard sync)
 ```
+
+Monitoring dashboards live in [`observability/`](observability/) — the bundled
+stack provisions them automatically, and BYO-Grafana operators can import the
+JSON directly. See [`observability/README.md`](observability/README.md).
 
 ## Quick starts
 
