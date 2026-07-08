@@ -45,11 +45,11 @@ If you already run Grafana and Prometheus:
 | [`dashboards/shipgrid-service-overview.json`](dashboards/shipgrid-service-overview.json) | RPS, latency and error rate per service |
 | [`dashboards/shipgrid-http-runtime.json`](dashboards/shipgrid-http-runtime.json) | HTTP request rate and status codes by service |
 | [`dashboards/shipgrid-ai-llm.json`](dashboards/shipgrid-ai-llm.json) | LLM calls, tokens, latency and cost |
-| [`dashboards/shipgrid-service-health.json`](dashboards/shipgrid-service-health.json) | Up / probe status per service |
+| [`dashboards/shipgrid-service-health.json`](dashboards/shipgrid-service-health.json) | Which services are up/down, 5xx error rate and P95 latency per service |
 
-> **`shipgrid-service-health`** is built on top of blackbox-exporter probe jobs
-> (`*-http-probe` / `*-tcp-probe`). It only fills in if you run blackbox probes
-> against your services; the other three work off the standard `/metrics` scrape.
+All four dashboards read the standard `/metrics` scrape (job `shipgrid` in
+Compose, `shipgrid-pods` in Kubernetes) — no blackbox-exporter or extra probes
+required.
 
 ## Keeping copies in sync
 
