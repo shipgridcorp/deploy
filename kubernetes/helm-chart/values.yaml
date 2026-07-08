@@ -323,13 +323,13 @@ services:
   # platform reaches the connector over gRPC (repo listing / integration
   # checks); connector:9090 is already platform's code default (see
   # connector.extraPorts below).
-  platform:          { image: platform,          tag: v1.58.1,   config: false, db: shipgrid_platform }
-  billing:           { image: billing,           tag: v1.43.0,   config: false, db: shipgrid_billing, license: true }
+  platform:          { image: platform,          tag: v1.61.0,   config: false, db: shipgrid_platform }
+  billing:           { image: billing,           tag: v1.47.0,   config: false, db: shipgrid_billing, license: true }
   # gate is the one service off the /healthz+/readyz convention (/health +
   # /readiness instead).
   gate:
     image: llm-gateway
-    tag: v1.29.0
+    tag: v1.33.0
     config: true
     db: shipgrid_gate
     probes:
@@ -356,8 +356,8 @@ services:
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
-  ai-analysis:       { image: ai-analysis,       tag: v1.252.1,  config: false, db: shipgrid_ai_analysis }
-  ai-settings:       { image: ai-settings,       tag: v0.10.1,    config: false, db: shipgrid_ai_settings }
+  ai-analysis:       { image: ai-analysis,       tag: v1.258.0,  config: false, db: shipgrid_ai_analysis }
+  ai-settings:       { image: ai-settings,       tag: v0.13.0,    config: false, db: shipgrid_ai_settings }
   review-processor:  { image: review-processor,  tag: v1.56.1,   config: false, db: shipgrid_review_processor }
   webhook-ingestor:  { image: webhook-ingestor,  tag: v1.14.1,   config: false, db: shipgrid_webhook_ingestor }
   notification:      { image: notification,      tag: v1.12.1,    config: false }
