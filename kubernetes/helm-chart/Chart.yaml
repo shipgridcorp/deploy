@@ -2,7 +2,7 @@ apiVersion: v2
 name: shipgrid
 description: ShipGrid on-prem umbrella chart — all backend services + edge gateway, with RU/self-hosted LLM policy and Ed25519 licensing. For customer-operated (incl. air-gapped) Kubernetes.
 type: application
-version: 0.4.16
+version: 0.4.17
 appVersion: "1.0"
 kubeVersion: ">=1.27.0-0"
 home: https://shipgrid.app

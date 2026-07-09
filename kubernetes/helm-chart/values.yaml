@@ -356,7 +356,7 @@ services:
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits:   { cpu: "2",  memory: 2Gi }
-  ai-analysis:       { image: ai-analysis,       tag: v1.261.0,  config: false, db: shipgrid_ai_analysis }
+  ai-analysis:       { image: ai-analysis,       tag: v1.262.0,  config: false, db: shipgrid_ai_analysis }
   ai-settings:       { image: ai-settings,       tag: v0.14.0,    config: false, db: shipgrid_ai_settings }
   review-processor:  { image: review-processor,  tag: v1.56.1,   config: false, db: shipgrid_review_processor }
   webhook-ingestor:  { image: webhook-ingestor,  tag: v1.14.1,   config: false, db: shipgrid_webhook_ingestor }
